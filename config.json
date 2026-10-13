@@ -1,0 +1,16 @@
+{
+  "TASK": "all",
+  "MACRO_MODEL": "globiom",
+  "SCENARIO": "base",
+  "RUN_SWAT": "1",
+  "RUN_BIODIVERSITY": "1",
+  "YEARS": "all",
+  "RESOLUTION": "10km",
+  "NCORES": "4",
+  "SMOKE": "0",
+  "FORCE": "0",
+  "WORK_DIR": "/mnt/wdrv/act4cap",
+  "OUTPUT_DIR": "outputs",
+  "INPUT_DIR": "inputs",
+  "CASCADING_GAMBLE_DIR": "/app/cascadinggamble-core"
+}

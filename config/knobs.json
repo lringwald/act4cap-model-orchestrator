@@ -1,0 +1,238 @@
+{
+  "_comment": [
+    "THE KNOB REGISTRY. One definition per setting, and the only place a default lives.",
+    "tools/gen_config.R turns this into:",
+    "  config/knobs.generated.sh        defaults the entrypoint sources",
+    "  docs/routine_config.schema.json  the Routine Configuration Schema the platform reads",
+    "Edit this file and re-run the generator; never edit the generated files.",
+    "",
+    "fields:",
+    "  name     the knob, and the environment variable unless 'env' says otherwise",
+    "  default  what the entrypoint uses when nothing arrives from the platform",
+    "  blank    what an empty string from the platform means (schemas often send '')",
+    "  scope    operational | model   -- model knobs change results, operational ones do not",
+    "  tasks    which TASK values the knob applies to; [] means all"
+  ],
+  "knobs": [
+    {
+      "name": "TASK",
+      "env": "TASK",
+      "type": "string",
+      "default": "all",
+      "blank": "all",
+      "scope": "operational",
+      "label": "Workflow / Task",
+      "enum": [
+        "smoke",
+        "downscale",
+        "swat",
+        "biodiversity",
+        "postprocess",
+        "all"
+      ],
+      "desc": "Which workflow task to run: 'smoke' executes a minimal verification test proving the container, mounts, and interfaces; 'downscale' runs the Cascading Gamble spatial allocation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link on existing downscaling results; 'all' runs the complete pipeline (downscaling + SWAT+ + Biodiversity Link).",
+      "tasks": []
+    },
+    {
+      "name": "MACRO_MODEL",
+      "env": "MACRO_MODEL",
+      "type": "string",
+      "default": "globiom",
+      "blank": "globiom",
+      "scope": "model",
+      "label": "Macro Economic Model",
+      "enum": [
+        "globiom",
+        "capri",
+        "image",
+        "magnet",
+        "clumondo",
+        "all"
+      ],
+      "desc": "Which macro-economic model to downscale and process: 'globiom', 'capri', 'image', 'magnet', 'clumondo', or 'all' to process all models in sequence.",
+      "tasks": [
+        "downscale",
+        "swat",
+        "biodiversity",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "SCENARIO",
+      "env": "SCENARIO",
+      "type": "string",
+      "default": "base",
+      "blank": "base",
+      "scope": "model",
+      "label": "Macro / Policy Scenario",
+      "enum": [
+        "base",
+        "all"
+      ],
+      "desc": "Scenario to evaluate: 'base' runs the baseline reference path; 'all' runs every available scenario for the selected model.",
+      "tasks": [
+        "downscale",
+        "swat",
+        "biodiversity",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "RUN_SWAT",
+      "env": "RUN_SWAT",
+      "type": "string",
+      "default": "1",
+      "blank": "1",
+      "scope": "model",
+      "label": "Run Water Quality Model (SWAT+)",
+      "enum": [
+        "1",
+        "0"
+      ],
+      "desc": "Whether to run SWAT+ water quality simulations (nutrient runoff, nitrogen and phosphorus leaching, streamflow, catchment sediment yield). Set to 1 for on, 0 for off.",
+      "tasks": [
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "RUN_BIODIVERSITY",
+      "env": "RUN_BIODIVERSITY",
+      "type": "string",
+      "default": "1",
+      "blank": "1",
+      "scope": "model",
+      "label": "Run Biodiversity Model (Biodiversity Link)",
+      "enum": [
+        "1",
+        "0"
+      ],
+      "desc": "Whether to run the Biodiversity Link ecological effects model (species richness, Mean Species Abundance MSA, habitat fragmentation, ecosystem intactness). Set to 1 for on, 0 for off.",
+      "tasks": [
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "YEARS",
+      "env": "YEARS",
+      "type": "string",
+      "default": "all",
+      "blank": "all",
+      "scope": "model",
+      "label": "Time Horizon / Years",
+      "enum": [
+        "all",
+        "2020",
+        "2030",
+        "2040",
+        "2050",
+        "2020,2030,2050"
+      ],
+      "desc": "Simulation years to process. 'all' downscales and simulates all standard time steps (2000, 2010, 2020, 2030, 2040, 2050); or pass comma-separated years.",
+      "tasks": []
+    },
+    {
+      "name": "RESOLUTION",
+      "env": "RESOLUTION",
+      "type": "string",
+      "default": "10km",
+      "blank": "10km",
+      "scope": "model",
+      "label": "Grid Spatial Resolution",
+      "enum": [
+        "10km",
+        "1km"
+      ],
+      "desc": "Target grid resolution for downscaling and subsequent impact assessment. Standard Act4Cap grid is 10km (EEA EPSG:3035).",
+      "tasks": []
+    },
+    {
+      "name": "NCORES",
+      "env": "NCORES",
+      "type": "string",
+      "default": "4",
+      "blank": "4",
+      "scope": "operational",
+      "label": "Parallel CPU Cores",
+      "desc": "Number of CPU cores allocated for parallel raster processing, IPF gravity allocation, and catchment-level environmental calculations.",
+      "tasks": []
+    },
+    {
+      "name": "SMOKE",
+      "env": "SMOKE",
+      "type": "string",
+      "default": "0",
+      "blank": "0",
+      "scope": "operational",
+      "label": "Smoke Test Mode",
+      "enum": [
+        "0",
+        "1"
+      ],
+      "desc": "Set to 1 to run a fast smoke test over a regional 1-pixel slice, verifying container environment, mounts, and interfaces without full computation. Set to 0 for production.",
+      "tasks": []
+    },
+    {
+      "name": "FORCE",
+      "env": "FORCE",
+      "type": "string",
+      "default": "0",
+      "blank": "0",
+      "scope": "operational",
+      "label": "Force Re-run Existing Outputs",
+      "enum": [
+        "0",
+        "1"
+      ],
+      "desc": "Set to 1 to force re-computation and overwrite existing outputs on the drive. Left at 0 to resume from completed stages.",
+      "tasks": []
+    },
+    {
+      "name": "WORK_DIR",
+      "env": "WORK_DIR",
+      "type": "string",
+      "default": "/mnt/wdrv/act4cap",
+      "blank": "/mnt/wdrv/act4cap",
+      "scope": "operational",
+      "label": "Persistent Storage Mount (FUSE)",
+      "desc": "The cluster FUSE mount path where persistent inputs and outputs are symlinked so the platform retains and collects them at job completion.",
+      "tasks": []
+    },
+    {
+      "name": "OUTPUT_DIR",
+      "env": "OUTPUT_DIR",
+      "type": "string",
+      "default": "outputs",
+      "blank": "outputs",
+      "scope": "operational",
+      "label": "Output Subdirectory",
+      "desc": "Directory where downscaled land use, GeoTIFF indicators, SWAT+ outputs, and Biodiversity Link metrics are written.",
+      "tasks": []
+    },
+    {
+      "name": "INPUT_DIR",
+      "env": "INPUT_DIR",
+      "type": "string",
+      "default": "inputs",
+      "blank": "inputs",
+      "scope": "operational",
+      "label": "Input Subdirectory",
+      "desc": "Directory containing macro model tabular data, baseline spatial maps, prior weights, and catchment boundary shapefiles.",
+      "tasks": []
+    },
+    {
+      "name": "CASCADING_GAMBLE_DIR",
+      "env": "CASCADING_GAMBLE_DIR",
+      "type": "string",
+      "default": "/app/cascadinggamble-core",
+      "blank": "/app/cascadinggamble-core",
+      "scope": "operational",
+      "label": "Cascading Gamble Core Path",
+      "desc": "Filesystem path to the cascadinggamble-core downscaling engine codebase or vendored module.",
+      "tasks": []
+    }
+  ]
+}

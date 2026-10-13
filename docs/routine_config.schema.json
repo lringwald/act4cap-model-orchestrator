@@ -1,0 +1,145 @@
+{
+  "root": {
+    "type": "object",
+    "title": "Act4Cap Integrated Downscaling & Environmental Routine Configuration",
+    "description": "GENERATED from config/knobs.json by tools/gen_config.R. Executes Cascading Gamble spatial downscaling across EU-27 for selected macro models (GLOBIOM, CAPRI, IMAGE, MAGNET, CLUMONDO), followed by SWAT+ water quality simulations and Biodiversity Link ecological metrics in a cluster container environment. Entrypoint: entrypoint.sh.",
+    "required": [
+      "TASK",
+      "MACRO_MODEL"
+    ],
+    "properties": {
+      "TASK": {
+        "type": "string",
+        "title": "Workflow / Task",
+        "description": "Workflow / Task -- Which workflow task to run: 'smoke' executes a minimal verification test proving the container, mounts, and interfaces; 'downscale' runs the Cascading Gamble spatial allocation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link on existing downscaling results; 'all' runs the complete pipeline (downscaling + SWAT+ + Biodiversity Link).",
+        "default": "all",
+        "enum": [
+          "smoke",
+          "downscale",
+          "swat",
+          "biodiversity",
+          "postprocess",
+          "all"
+        ]
+      },
+      "MACRO_MODEL": {
+        "type": "string",
+        "title": "Macro Economic Model",
+        "description": "Macro Economic Model -- Which macro-economic model to downscale and process: 'globiom', 'capri', 'image', 'magnet', 'clumondo', or 'all' to process all models in sequence.",
+        "default": "globiom",
+        "enum": [
+          "globiom",
+          "capri",
+          "image",
+          "magnet",
+          "clumondo",
+          "all"
+        ]
+      },
+      "SCENARIO": {
+        "type": "string",
+        "title": "Macro / Policy Scenario",
+        "description": "Macro / Policy Scenario -- Scenario to evaluate: 'base' runs the baseline reference path; 'all' runs every available scenario for the selected model.",
+        "default": "base",
+        "enum": [
+          "base",
+          "all"
+        ]
+      },
+      "RUN_SWAT": {
+        "type": "string",
+        "title": "Run Water Quality Model (SWAT+)",
+        "description": "Run Water Quality Model (SWAT+) -- Whether to run SWAT+ water quality simulations (nutrient runoff, nitrogen and phosphorus leaching, streamflow, catchment sediment yield). Set to 1 for on, 0 for off.",
+        "default": "1",
+        "enum": [
+          "1",
+          "0"
+        ]
+      },
+      "RUN_BIODIVERSITY": {
+        "type": "string",
+        "title": "Run Biodiversity Model (Biodiversity Link)",
+        "description": "Run Biodiversity Model (Biodiversity Link) -- Whether to run the Biodiversity Link ecological effects model (species richness, Mean Species Abundance MSA, habitat fragmentation, ecosystem intactness). Set to 1 for on, 0 for off.",
+        "default": "1",
+        "enum": [
+          "1",
+          "0"
+        ]
+      },
+      "YEARS": {
+        "type": "string",
+        "title": "Time Horizon / Years",
+        "description": "Time Horizon / Years -- Simulation years to process. 'all' downscales and simulates all standard time steps (2000, 2010, 2020, 2030, 2040, 2050); or pass comma-separated years.",
+        "default": "all",
+        "enum": [
+          "all",
+          "2020",
+          "2030",
+          "2040",
+          "2050",
+          "2020,2030,2050"
+        ]
+      },
+      "RESOLUTION": {
+        "type": "string",
+        "title": "Grid Spatial Resolution",
+        "description": "Grid Spatial Resolution -- Target grid resolution for downscaling and subsequent impact assessment. Standard Act4Cap grid is 10km (EEA EPSG:3035).",
+        "default": "10km",
+        "enum": [
+          "10km",
+          "1km"
+        ]
+      },
+      "NCORES": {
+        "type": "string",
+        "title": "Parallel CPU Cores",
+        "description": "Parallel CPU Cores -- Number of CPU cores allocated for parallel raster processing, IPF gravity allocation, and catchment-level environmental calculations.",
+        "default": "4"
+      },
+      "SMOKE": {
+        "type": "string",
+        "title": "Smoke Test Mode",
+        "description": "Smoke Test Mode -- Set to 1 to run a fast smoke test over a regional 1-pixel slice, verifying container environment, mounts, and interfaces without full computation. Set to 0 for production.",
+        "default": "0",
+        "enum": [
+          "0",
+          "1"
+        ]
+      },
+      "FORCE": {
+        "type": "string",
+        "title": "Force Re-run Existing Outputs",
+        "description": "Force Re-run Existing Outputs -- Set to 1 to force re-computation and overwrite existing outputs on the drive. Left at 0 to resume from completed stages.",
+        "default": "0",
+        "enum": [
+          "0",
+          "1"
+        ]
+      },
+      "WORK_DIR": {
+        "type": "string",
+        "title": "Persistent Storage Mount (FUSE)",
+        "description": "Persistent Storage Mount (FUSE) -- The cluster FUSE mount path where persistent inputs and outputs are symlinked so the platform retains and collects them at job completion.",
+        "default": "/mnt/wdrv/act4cap"
+      },
+      "OUTPUT_DIR": {
+        "type": "string",
+        "title": "Output Subdirectory",
+        "description": "Output Subdirectory -- Directory where downscaled land use, GeoTIFF indicators, SWAT+ outputs, and Biodiversity Link metrics are written.",
+        "default": "outputs"
+      },
+      "INPUT_DIR": {
+        "type": "string",
+        "title": "Input Subdirectory",
+        "description": "Input Subdirectory -- Directory containing macro model tabular data, baseline spatial maps, prior weights, and catchment boundary shapefiles.",
+        "default": "inputs"
+      },
+      "CASCADING_GAMBLE_DIR": {
+        "type": "string",
+        "title": "Cascading Gamble Core Path",
+        "description": "Cascading Gamble Core Path -- Filesystem path to the cascadinggamble-core downscaling engine codebase or vendored module.",
+        "default": "/app/cascadinggamble-core"
+      }
+    }
+  }
+}

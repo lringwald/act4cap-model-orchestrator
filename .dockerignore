@@ -1,0 +1,14 @@
+.Rproj.user
+.Rhistory
+.RData
+*.RData
+outputs/
+output/
+logs/
+temp/
+.build_id
+data/intermediate/
+data/raw/
+*.tif
+*.parquet
+*.qs
