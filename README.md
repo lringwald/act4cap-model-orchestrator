@@ -1,6 +1,8 @@
 # Act4Cap Integrated Modelling Orchestrator
 
-A containerised orchestration routine designed for the **Act4Cap Project** to execute spatial downscaling via **Cascading Gamble** and subsequent environmental impact post-modelling (**SWAT+** water quality and **Biodiversity Link** ecological integrity) on a WKUBE Kubernetes cluster or locally.
+A containerised orchestration routine designed for the **Act4Cap Project** coupling macro-economic agricultural models (GLOBIOM, CAPRI, IMAGE, MAGNET, CLUMONDO) with environmental post-processors (**SWAT+** water quality and **Biodiversity Link** ecological integrity).
+
+The **Cascade Interface** ([`lringwald/gamble-cascade`](https://github.com/lringwald/gamble-cascade)) acts as the **necessary spatial intermediary and mediator**—translating aggregate regional/national economic supply balance sheets into mass-conserved 10km grid-cell distributions that directly enable downstream hydrological catchment routing and biodiversity assessments.
 
 ---
 
@@ -12,7 +14,7 @@ The routine is fully configured by `config.json` adhering to `docs/routine_confi
 
 | Knob | Type | Default | Description |
 | :--- | :---: | :---: | :--- |
-| `TASK` | enum | `all` | `all`, `downscale`, `swat`, `biodiversity`, `postprocess`, `smoke` |
+| `TASK` | enum | `all` | `all`, `downscale` (mediator), `swat`, `biodiversity`, `postprocess`, `smoke` |
 | `MACRO_MODEL` | enum | `globiom` | `globiom`, `capri`, `image`, `magnet`, `clumondo`, `all` |
 | `SCENARIO` | enum | `base` | `base`, `all` |
 | `RUN_SWAT` | enum | `1` | `1` to run SWAT+ water quality model, `0` to skip |
@@ -24,7 +26,10 @@ The routine is fully configured by `config.json` adhering to `docs/routine_confi
 | `FORCE` | enum | `0` | Set to `1` to overwrite completed stages |
 | `WORK_DIR` | string | `/mnt/wdrv/act4cap` | Cluster FUSE mount path |
 | `OUTPUT_DIR` | string | `outputs` | Output folder relative to WORK_DIR |
-| `CASCADING_GAMBLE_DIR` | string | `/app/cascadinggamble-core` | Path to Cascading Gamble downscaling engine |
+| `CASCADING_GAMBLE_DIR` | string | `/app/gamble-cascade` | Path to Cascade Interface downscaling suite (spatial mediator) |
+| `SWATPLUS_DIR` | string | `/mnt/wdrv/act4cap/swatplus_runs` | SWAT+ pipeline scripts (0-6) & HRU datasets (`Q:/swatplus_runs` locally) |
+| `BIODIVERSITY_LINK_DIR` | string | `vendor/Biodiversity_Link` | IIASA Biodiversity_Link repository path (`6cc4443f`) |
+| `POSTMODEL_MODE` | enum | `tentative` | `tentative` (integrated proxy), `full` (native cluster runs), `smoke` |
 
 ---
 

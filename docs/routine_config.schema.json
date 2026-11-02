@@ -11,7 +11,7 @@
       "TASK": {
         "type": "string",
         "title": "Workflow / Task",
-        "description": "Workflow / Task -- Which workflow task to run: 'smoke' executes a minimal verification test proving the container, mounts, and interfaces; 'downscale' runs the Cascading Gamble spatial allocation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link on existing downscaling results; 'all' runs the complete pipeline (downscaling + SWAT+ + Biodiversity Link).",
+        "description": "Workflow / Task -- Which workflow task to run: 'smoke' executes a minimal verification test proving the container, mounts, and interfaces; 'downscale' executes the necessary spatial mediation allocating macro economic targets to 10km grid cells with exact mass conservation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link side-by-side on mediated downscaling results; 'all' runs the complete pipeline (downscaling mediation + SWAT+ + Biodiversity Link).",
         "default": "all",
         "enum": [
           "smoke",
@@ -24,27 +24,33 @@
       },
       "MACRO_MODEL": {
         "type": "string",
-        "title": "Macro Economic Model",
-        "description": "Macro Economic Model -- Which macro-economic model to downscale and process: 'globiom', 'capri', 'image', 'magnet', 'clumondo', or 'all' to process all models in sequence.",
-        "default": "globiom",
+        "title": "Macro Economic Model(s)",
+        "description": "Macro Economic Model(s) -- Which macro-economic model(s) to process: single model ('globiom'), comma-separated models ('globiom,capri'), or 'all' to process all models in parallel across allocated CPU cores.",
+        "default": "globiom"
+      },
+      "INPUT_FILE": {
+        "type": "string",
+        "title": "Macro Model Input File / Vintage",
+        "description": "Macro Model Input File / Vintage -- Specific macro-economic data filename or path to process (e.g. '20260916_compr_scens_merge.csv'). If left empty or set to 'latest', the orchestrator automatically detects and selects the newest date vintage available in the macro_model folder. OPTIONAL: leave empty for the built-in default."
+      },
+      "POSTMODELS": {
+        "type": "string",
+        "title": "Subprocessing Environmental Models",
+        "description": "Subprocessing Environmental Models -- Which subprocessing / post-modelling modules to run side-by-side: 'all' (both SWAT+ and Biodiversity Link), 'swat' (water quality only), 'biodiversity' (ecological intactness only), or 'none'.",
+        "default": "all",
         "enum": [
-          "globiom",
-          "capri",
-          "image",
-          "magnet",
-          "clumondo",
-          "all"
+          "all",
+          "swat",
+          "biodiversity",
+          "swat,biodiversity",
+          "none"
         ]
       },
       "SCENARIO": {
         "type": "string",
-        "title": "Macro / Policy Scenario",
-        "description": "Macro / Policy Scenario -- Scenario to evaluate: 'base' runs the baseline reference path; 'all' runs every available scenario for the selected model.",
-        "default": "base",
-        "enum": [
-          "base",
-          "all"
-        ]
+        "title": "Macro / Policy Scenario(s)",
+        "description": "Macro / Policy Scenario(s) -- Scenario(s) to evaluate: 'base' runs the baseline reference path; 'all' runs all standard scenarios (base, mitigation, diet, biodiversity); or pass comma-separated scenarios (e.g. 'base,mitigation'). Multiple scenarios are executed in parallel across allocated CPU cores.",
+        "default": "base"
       },
       "RUN_SWAT": {
         "type": "string",
@@ -136,9 +142,38 @@
       },
       "CASCADING_GAMBLE_DIR": {
         "type": "string",
-        "title": "Cascading Gamble Core Path",
-        "description": "Cascading Gamble Core Path -- Filesystem path to the cascadinggamble-core downscaling engine codebase or vendored module.",
-        "default": "/app/cascadinggamble-core"
+        "title": "Cascade Spatial Mediator Path",
+        "description": "Cascade Spatial Mediator Path -- Filesystem path to the Cascade downscaling suite acting as the necessary spatial mediator between macro models and environmental post-processors (gamble-cascade / cascadinggamble-core).",
+        "default": "/app/gamble-cascade"
+      },
+      "SWATPLUS_DIR": {
+        "type": "string",
+        "title": "SWAT+ Toolkit Directory",
+        "description": "SWAT+ Toolkit Directory -- Path to the SWAT+ Python scripts (0-6), default HRU shapefile, and model binaries (e.g. Q:/swatplus_runs locally or /mnt/wdrv/act4cap/swatplus_runs on WKUBE).",
+        "default": "/mnt/wdrv/act4cap/swatplus_runs"
+      },
+      "BIODIVERSITY_LINK_DIR": {
+        "type": "string",
+        "title": "Biodiversity Link Repository Path",
+        "description": "Biodiversity Link Repository Path -- Path to the IIASA Biodiversity_Link codebase and input datasets (commit 6cc4443f24663622cbbae6f22dce5428bce6b50d).",
+        "default": "vendor/Biodiversity_Link"
+      },
+      "BIODIVERSITY_MAPPING_FILE": {
+        "type": "string",
+        "title": "AgMIP to Biodiversity Link Mapping Table",
+        "description": "AgMIP to Biodiversity Link Mapping Table -- Path to CSV table defining the formal crosswalk between downscaled AgMIP land-use classes and IIASA Biodiversity Link categories (lc_type, lc_btc, lc_csar, bii_luclass, csar affinity, and msa).",
+        "default": "config/mapping_agmip_to_biodiversity_link.csv"
+      },
+      "POSTMODEL_MODE": {
+        "type": "string",
+        "title": "Post-Modelling Execution Mode",
+        "description": "Post-Modelling Execution Mode -- Execution mode for post-models: 'tentative' runs integrated analytical post-processing with graceful fallbacks; 'full' executes native cluster simulation pipelines; 'smoke' executes rapid plumbing proof.",
+        "default": "tentative",
+        "enum": [
+          "tentative",
+          "full",
+          "smoke"
+        ]
       }
     }
   }

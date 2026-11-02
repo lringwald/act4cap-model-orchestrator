@@ -30,7 +30,7 @@
         "postprocess",
         "all"
       ],
-      "desc": "Which workflow task to run: 'smoke' executes a minimal verification test proving the container, mounts, and interfaces; 'downscale' runs the Cascading Gamble spatial allocation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link on existing downscaling results; 'all' runs the complete pipeline (downscaling + SWAT+ + Biodiversity Link).",
+      "desc": "Which workflow task to run: 'smoke' executes a minimal verification test proving the container, mounts, and interfaces; 'downscale' executes the necessary spatial mediation allocating macro economic targets to 10km grid cells with exact mass conservation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link side-by-side on mediated downscaling results; 'all' runs the complete pipeline (downscaling mediation + SWAT+ + Biodiversity Link).",
       "tasks": []
     },
     {
@@ -40,20 +40,50 @@
       "default": "globiom",
       "blank": "globiom",
       "scope": "model",
-      "label": "Macro Economic Model",
-      "enum": [
-        "globiom",
-        "capri",
-        "image",
-        "magnet",
-        "clumondo",
-        "all"
-      ],
-      "desc": "Which macro-economic model to downscale and process: 'globiom', 'capri', 'image', 'magnet', 'clumondo', or 'all' to process all models in sequence.",
+      "label": "Macro Economic Model(s)",
+      "desc": "Which macro-economic model(s) to process: single model ('globiom'), comma-separated models ('globiom,capri'), or 'all' to process all models in parallel across allocated CPU cores.",
       "tasks": [
         "downscale",
         "swat",
         "biodiversity",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "INPUT_FILE",
+      "env": "INPUT_FILE",
+      "type": "string",
+      "default": "",
+      "blank": "",
+      "scope": "model",
+      "label": "Macro Model Input File / Vintage",
+      "desc": "Specific macro-economic data filename or path to process (e.g. '20260916_compr_scens_merge.csv'). If left empty or set to 'latest', the orchestrator automatically detects and selects the newest date vintage available in the macro_model folder.",
+      "tasks": [
+        "downscale",
+        "swat",
+        "biodiversity",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "POSTMODELS",
+      "env": "POSTMODELS",
+      "type": "string",
+      "default": "all",
+      "blank": "all",
+      "scope": "model",
+      "label": "Subprocessing Environmental Models",
+      "enum": [
+        "all",
+        "swat",
+        "biodiversity",
+        "swat,biodiversity",
+        "none"
+      ],
+      "desc": "Which subprocessing / post-modelling modules to run side-by-side: 'all' (both SWAT+ and Biodiversity Link), 'swat' (water quality only), 'biodiversity' (ecological intactness only), or 'none'.",
+      "tasks": [
         "postprocess",
         "all"
       ]
@@ -65,12 +95,8 @@
       "default": "base",
       "blank": "base",
       "scope": "model",
-      "label": "Macro / Policy Scenario",
-      "enum": [
-        "base",
-        "all"
-      ],
-      "desc": "Scenario to evaluate: 'base' runs the baseline reference path; 'all' runs every available scenario for the selected model.",
+      "label": "Macro / Policy Scenario(s)",
+      "desc": "Scenario(s) to evaluate: 'base' runs the baseline reference path; 'all' runs all standard scenarios (base, mitigation, diet, biodiversity); or pass comma-separated scenarios (e.g. 'base,mitigation'). Multiple scenarios are executed in parallel across allocated CPU cores.",
       "tasks": [
         "downscale",
         "swat",
@@ -227,12 +253,78 @@
       "name": "CASCADING_GAMBLE_DIR",
       "env": "CASCADING_GAMBLE_DIR",
       "type": "string",
-      "default": "/app/cascadinggamble-core",
-      "blank": "/app/cascadinggamble-core",
+      "default": "/app/gamble-cascade",
+      "blank": "/app/gamble-cascade",
       "scope": "operational",
-      "label": "Cascading Gamble Core Path",
-      "desc": "Filesystem path to the cascadinggamble-core downscaling engine codebase or vendored module.",
+      "label": "Cascade Spatial Mediator Path",
+      "desc": "Filesystem path to the Cascade downscaling suite acting as the necessary spatial mediator between macro models and environmental post-processors (gamble-cascade / cascadinggamble-core).",
       "tasks": []
+    },
+    {
+      "name": "SWATPLUS_DIR",
+      "env": "SWATPLUS_DIR",
+      "type": "string",
+      "default": "/mnt/wdrv/act4cap/swatplus_runs",
+      "blank": "/mnt/wdrv/act4cap/swatplus_runs",
+      "scope": "operational",
+      "label": "SWAT+ Toolkit Directory",
+      "desc": "Path to the SWAT+ Python scripts (0-6), default HRU shapefile, and model binaries (e.g. Q:/swatplus_runs locally or /mnt/wdrv/act4cap/swatplus_runs on WKUBE).",
+      "tasks": [
+        "swat",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "BIODIVERSITY_LINK_DIR",
+      "env": "BIODIVERSITY_LINK_DIR",
+      "type": "string",
+      "default": "vendor/Biodiversity_Link",
+      "blank": "vendor/Biodiversity_Link",
+      "scope": "operational",
+      "label": "Biodiversity Link Repository Path",
+      "desc": "Path to the IIASA Biodiversity_Link codebase and input datasets (commit 6cc4443f24663622cbbae6f22dce5428bce6b50d).",
+      "tasks": [
+        "biodiversity",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "BIODIVERSITY_MAPPING_FILE",
+      "env": "BIODIVERSITY_MAPPING_FILE",
+      "type": "string",
+      "default": "config/mapping_agmip_to_biodiversity_link.csv",
+      "blank": "config/mapping_agmip_to_biodiversity_link.csv",
+      "scope": "model",
+      "label": "AgMIP to Biodiversity Link Mapping Table",
+      "desc": "Path to CSV table defining the formal crosswalk between downscaled AgMIP land-use classes and IIASA Biodiversity Link categories (lc_type, lc_btc, lc_csar, bii_luclass, csar affinity, and msa).",
+      "tasks": [
+        "biodiversity",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "POSTMODEL_MODE",
+      "env": "POSTMODEL_MODE",
+      "type": "string",
+      "default": "tentative",
+      "blank": "tentative",
+      "scope": "model",
+      "label": "Post-Modelling Execution Mode",
+      "enum": [
+        "tentative",
+        "full",
+        "smoke"
+      ],
+      "desc": "Execution mode for post-models: 'tentative' runs integrated analytical post-processing with graceful fallbacks; 'full' executes native cluster simulation pipelines; 'smoke' executes rapid plumbing proof.",
+      "tasks": [
+        "swat",
+        "biodiversity",
+        "postprocess",
+        "all"
+      ]
     }
   ]
 }

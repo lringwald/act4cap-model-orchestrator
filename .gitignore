@@ -12,3 +12,6 @@ data/raw/
 *.tif
 *.parquet
 *.qs
+vendor/
+scratch/
+

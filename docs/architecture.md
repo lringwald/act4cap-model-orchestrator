@@ -2,9 +2,14 @@
 
 The **Act4Cap Integrated Modelling Orchestrator** couples macro-economic agricultural models with spatial downscaling and subsequent environmental post-processors in an automated containerised routine on the WKUBE cluster.
 
+> [!IMPORTANT]
+> **Spatial Downscaling as the Necessary Intermediary & Mediator**:  
+> Macro-economic models (GLOBIOM, CAPRI, IMAGE, MAGNET, CLUMONDO) operate at coarse national or regional administrative aggregates with no explicit biophysical topology. Conversely, environmental post-processors (**SWAT+** hydrological catchments and **Biodiversity Link** ecoregional habitat networks) strictly require spatially explicit 10km grid-cell geometries, soil/topography interactions, and fine-grained crop management splits.  
+> The **Cascade Interface** (`gamble-cascade`) acts as the **indispensable spatial mediator and harmonizer**—translating aggregate policy scenario trajectories into mass-conserved, biophysically grounded 10km allocations that directly enable all downstream environmental post-modelling.
+
 ```mermaid
 flowchart TD
-    subgraph Macro Models
+    subgraph Macro Models ["Macro-Economic Agricultural Models (Coarse Aggregates)"]
         A1[GLOBIOM] --> M[Macro Land & Input Data]
         A2[CAPRI] --> M
         A3[IMAGE] --> M
@@ -12,42 +17,76 @@ flowchart TD
         A5[CLUMONDO] --> M
     end
 
-    subgraph Step 1: Spatial Downscaling
-        M --> CG[Cascading Gamble Engine]
+    subgraph Step 1: Spatial Mediation ["Step 1: Essential Spatial Mediator & Harmonizer"]
+        M --> CG["Cascade Interface (gamble-cascade)\n[0% Area & Mass Conservation]"]
         P[Spatial Priors & Start Map] --> CG
-        CG --> LU[10km Downscaled Land Use]
-        CG --> INP[Downscaled Cropland Fertilizer N, P & Yields]
+        CG --> LU["10km Downscaled Land Use & Forest Splits\n(FOR|PRIM vs FOR|MAN, CRP|ARA, GRS)"]
+        CG --> INP["10km Downscaled Inputs\n(Fertilizer N, P, Irrigation & Yields)"]
     end
 
-    subgraph Step 2: Environmental Post-Modelling
-        LU --> SW[SWAT+ Water Quality Model]
+    subgraph Step 2: Environmental Post-Modelling ["Step 2: Twin Environmental Post-Models (Side-by-Side)"]
+        LU --> SW[Post-Model 2A: SWAT+ Water Quality]
         INP --> SW
-        SW --> WQ[Nutrient Leaching, Runoff & Streamflow]
+        SW --> WQ[Catchment Runoff, Water Yield, Leaching & Sediment]
         
-        LU --> BL[Biodiversity Link Model]
+        LU --> BL[Post-Model 2B: Biodiversity Link]
         INP --> BL
-        BL --> BD[MSA, BII & Habitat Intactness]
+        BL --> BD[BII Intactness, cSAR16 Habitat Risk & MSA]
     end
 
-    subgraph Step 3: Synthesis & Reporting
-        WQ --> SYN[Integrated Indicator Synthesis]
+    subgraph Step 3: Synthesis & Reporting ["Step 3: Integrated Indicator Synthesis"]
+        WQ --> SYN[Unified Multi-Pillar Synthesis]
         BD --> SYN
         LU --> SYN
-        SYN --> OUT[Multi-Band GeoTIFFs, Parquet & CSV Datasets]
+        SYN --> OUT[Integrated CSV Datasets & Composite RDS Artifacts]
     end
 ```
 
-## Post-Modelling Modules
+## Architectural Modules
 
-1. **Cascading Gamble Downscaling (`downscale`)**:
-   - Allocates national macro targets to 10km grid cells with exact 0% area and mass conservation.
-   - Downscales 11-21 specific crop and management classes (`FOR|MAN`, `FOR|PRIM`, `CRP|ARA|*`, `CRP|PRM|*`).
-   - Allocates agricultural inputs: Total N, Mineral N, Organic N, N balance, Total P, Mineral P, P balance, Pesticides, and Water consumption.
+1. **Cascade Interface Downscaling (`downscale`) — The Core Spatial Mediator**:
+   - Acts as the indispensable intermediary translating regional/national economic supply balance sheets into spatially explicit 10km EEA EPSG:3035 grid cells.
+   - Enforces exact **0% area and mass conservation** across all downscaled land uses and agricultural input volumes.
+   - Reconciles heterogeneous macro model classifications into 11–21 harmonized crop and forest management categories (`FOR|MAN`, `FOR|PRIM`, `CRP|ARA|*`, `CRP|PRM|*`, `GRS`, `ONV`, `BUI`).
+   - Downscales agricultural input intensities: Total N, Mineral N, Organic N, N balance, Total P, Mineral P, P balance, Pesticides, and Water consumption.
+   - **Mediation Role**: Without this step, aggregate macro outputs cannot be ingested by catchment-scale hydrology or pixel-level habitat intactness models.
 
-2. **SWAT+ Water Quality (`swat`)**:
+2. **SWAT+ Water Quality Post-Processor (`swat`)**:
+   - Integrates with the European SWAT+ execution toolkit ([`Q:\swatplus_runs`](file:///Q:/swatplus_runs) / `/mnt/wdrv/act4cap/swatplus_runs`), utilizing scripts `0_run_pipeline.py` through `6_run_swatplus.py` and the 146 MB `default_hru_shp/` hydrological units.
    - Translates downscaled land cover and crop fertilizer application into Hydrological Response Units (HRUs).
-   - Simulates hydrological water yield, surface runoff, soil erosion, and nitrogen/phosphorus leaching across European river basins.
+   - Simulates hydrological water yield (million m³), surface runoff coefficient, soil erosion sediment yield (ktons), and nitrogen/phosphorus leaching (tons) across European river basins.
+   - Supports both `tentative` proxy-routing and native cluster simulation (`POSTMODEL_MODE`).
 
-3. **Biodiversity Link (`biodiversity`)**:
-   - Translates spatial land use, forest management split (`FOR|PRIM` vs `FOR|MAN`), and agrochemical pressures into Mean Species Abundance (MSA) and Biodiversity Intactness Index (BII).
-   - Assesses landscape fragmentation and habitat suitability.
+3. **Biodiversity Link Post-Processor (`biodiversity`)**:
+   - Implements the IIASA **Biodiversity_Link** methodology ([GitHub commit `6cc4443f24663622cbbae6f22dce5428bce6b50d`](https://github.com/iiasa/Biodiversity_Link/tree/6cc4443f24663622cbbae6f22dce5428bce6b50d)).
+   - **Formal AgMIP-to-Biodiversity Mapping**: Uses [`config/mapping_agmip_to_biodiversity_link.csv`](file:///g:/My%20Drive/R/act4cap-orchestrator/config/mapping_agmip_to_biodiversity_link.csv) (configurable via the `BIODIVERSITY_MAPPING_FILE` knob) to provide a rigorous, transparent crosswalk between all downscaled AgMIP land-use classes and IIASA Biodiversity Link categories:
+     - `lc_type`: Primary land cover category (`CrpLnd`, `PltFor`, `forest_managed`, `forest_unmanaged`, `Grass`, `OthNatLnd`, `built_area`).
+     - `lc_btc`: BTC category (`cropland_other`, `cropland_2Gbioen`, `forest_managed`, `forest_unmanaged_primary`, `grassland`, `other_primary`, `other`, `built.up`).
+     - `lc_csar`: Countryside Species-Area Relationship category (`annual_crops`, `permanent_crops`, `intensive_forestry`, `primary`, `pasture`, `urban`).
+     - `bii_luclass_f` / `bii_luclass_nf`: Forest vs. non-forest biome coefficients dynamically calibrated against official IIASA `vendor/Biodiversity_Link/Input/BII_coefs.RData`.
+     - `msa_default_coef` & `csar_habitat_affinity`: Calibrated indicator weights across agricultural and forest management gradients.
+   - Evaluates three complementary ecological integrity metrics:
+     - **Biodiversity Intactness Index (BII)**: Calibrated against IIASA `BII_coefs.RData` and `BTC_LC_MAP.RData` across unmanaged primary forest, managed forest, extensive grassland, permanent bioenergy crops, and arable crops.
+     - **Countryside Species-Area Relationship (cSAR16)**: Ecoregional extinction risk and habitat intactness index based on transformed vs. natural habitats.
+     - **Mean Species Abundance (MSA)**: Landscape-level mean species abundance.
+   - Generates composite multi-metric RDS artifacts (`mapping_table` embedded) and regional tabular summaries.
+
+4. **Multi-Pillar Synthesis (`postprocess` / `all`)**:
+   - Merges SWAT+ catchment metrics and Biodiversity Link indicators into a unified multi-pillar indicator CSV dataset: `act4cap_integrated_synthesis_<model>_<scenario>.csv`.
+
+## Input File & Vintage Resolution
+
+The routine accepts macro-model inputs with flexible vintage selection via the `INPUT_FILE` knob:
+- **Explicit Filename/Path**: Specify an exact input file (e.g. `20260428_compr_scens_merge_MAGNET_CluMondo_IMAGE_GLOBIOM_CAPRI.csv` or a custom dataset). The orchestrator locates it either by absolute path or searches candidate input directories.
+- **Auto-Detected Latest Vintage**: If `INPUT_FILE` is left empty or set to `"latest"`, the orchestrator inspects the macro model directories (`INPUT_DIR`, `P:/globiom/Projects/DS_AgMIP/AgMIP_output`, etc.), parses date prefixes (`YYYYMMDD`) and file modification times (`mtime`), and automatically selects the most recent vintage (e.g. `20260916_compr_scens_merge.csv`).
+
+## Step Output Auto-Resolution & Incremental Resumption
+
+The orchestrator enforces automatic incremental caching across all workflow stages via the `FORCE` knob:
+- **Default (`FORCE=0` / Resume mode)**:
+  - **Step 1 (Downscaling)**: Automatically checks if downscaled 10km land-use maps already exist for the `(model, scenario)` pair. If found, reuses them immediately and skips re-running downscaling.
+  - **Step 2A (SWAT+)**: Automatically checks if `swat_plus_water_quality_summary_<model>_<scenario>.csv` exists. If found, reuses it immediately and skips hydrological catchment re-simulation.
+  - **Step 2B (Biodiversity Link)**: Automatically checks if `biodiversity_link_bii_summary_<model>_<scenario>.csv`, `csar`, and `msa` exist. If found, reuses them immediately and skips ecological metric re-evaluation.
+  - **Step 3 (Synthesis)**: If the final multi-pillar synthesis CSV exists and neither upstream submodel was freshly recomputed, reuses the existing synthesis dataset.
+- **Forced Re-computation (`FORCE=1` / Overwrite mode)**:
+  - Bypasses cached outputs and forces end-to-end execution, overwriting all artifacts on disk.
