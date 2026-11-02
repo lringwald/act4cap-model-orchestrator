@@ -13,6 +13,7 @@ source('R/cascade_interface.R')
 source('R/swat_interface.R')
 source('R/biodiversity_interface.R')
 source('R/synthesis.R')
+source('R/spatial_raster_export.R')
 
 # 0. Resolve execution parameters from env or config.json
 get_param <- function(key, default = NULL) {

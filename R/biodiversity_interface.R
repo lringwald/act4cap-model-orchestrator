@@ -14,6 +14,10 @@ suppressPackageStartupMessages({
   library(cli)
 })
 
+if (!exists('export_indicators_to_geotiff')) {
+  if (file.exists('R/spatial_raster_export.R')) source('R/spatial_raster_export.R')
+}
+
 load_agmip_biodiversity_mapping <- function(mapping_file = 'config/mapping_agmip_to_biodiversity_link.csv',
                                            bio_dir = 'vendor/Biodiversity_Link') {
   if (is.null(mapping_file) || !file.exists(mapping_file)) {
@@ -206,15 +210,46 @@ run_act4cap_biodiversity_postprocess <- function(model,
   msa_csv <- file.path(bio_out_dir, sprintf('biodiversity_link_msa_summary_%s_%s.csv', tolower(model), tolower(scenario)))
   fwrite(msa_summary, msa_csv)
 
-  # 6. Save composite RDS bundle
+  # 6. Spatially explicit cell-level export (CSV & GeoTIFF rasters)
+  cell_csv <- NULL
+  tifs <- character(0)
+  if ('ns' %in% names(bio_dt)) {
+    cell_bii <- bio_dt[, .(
+      total_area_km2      = round(sum(crp_area_km2, na.rm = TRUE), 2),
+      bii_score           = round(weighted.mean(bii_coef, crp_area_km2, na.rm = TRUE), 4),
+      csar_intactness     = round(weighted.mean(csar_habitat_weight, crp_area_km2, na.rm = TRUE), 4),
+      extinction_risk     = round(1 - weighted.mean(csar_habitat_weight, crp_area_km2, na.rm = TRUE), 4),
+      msa_score           = round(weighted.mean(msa_lu_coef, crp_area_km2, na.rm = TRUE), 4)
+    ), by = .(ns, Ns_reg, year)]
+
+    cell_csv <- file.path(bio_out_dir, sprintf('biodiversity_link_cells_%s_%s.csv', tolower(model), tolower(scenario)))
+    fwrite(cell_bii, cell_csv)
+    cli_alert_success('Saved spatially explicit cell-level summary: {basename(cell_csv)}')
+
+    tifs <- tryCatch(
+      export_indicators_to_geotiff(
+        cell_dt = cell_bii,
+        indicator_cols = c('bii_score', 'csar_intactness', 'msa_score'),
+        out_dir = bio_out_dir,
+        prefix = sprintf('biodiversity_%s_%s', tolower(model), tolower(scenario))
+      ),
+      error = function(e) {
+        cli_alert_warning('GeoTIFF raster export skipped: {e$message}')
+        character(0)
+      }
+    )
+  }
+
+  # 7. Save composite RDS bundle
   has_iiasa_tables <- file.exists(file.path(bio_dir, 'Input', 'BII_coefs.RData'))
   composite_rds <- file.path(bio_out_dir, sprintf('biodiversity_link_composite_%s_%s.rds', tolower(model), tolower(scenario)))
   saveRDS(list(
     bii_summary   = bii_summary,
     csar_summary  = csar_summary,
     msa_summary   = msa_summary,
+    cell_summary  = if (exists('cell_bii')) cell_bii else NULL,
     mapping_table = map_dt,
-    cell_detail   = if (is_trial) bio_dt else NULL,
+    rasters       = tifs,
     metadata      = list(
       model           = model,
       scenario        = scenario,
@@ -237,6 +272,8 @@ run_act4cap_biodiversity_postprocess <- function(model,
     summary_csv    = msa_csv,
     bii_csv        = bii_csv,
     csar_csv       = csar_csv,
+    cell_csv       = cell_csv,
+    rasters        = tifs,
     composite_rds  = composite_rds,
     bio_dir        = bio_out_dir
   ))

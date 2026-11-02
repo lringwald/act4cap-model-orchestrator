@@ -13,6 +13,10 @@ suppressPackageStartupMessages({
   library(cli)
 })
 
+if (!exists('export_indicators_to_geotiff')) {
+  if (file.exists('R/spatial_raster_export.R')) source('R/spatial_raster_export.R')
+}
+
 run_act4cap_swat_postprocess <- function(model,
                                         scenario,
                                         downscale_outputs,
@@ -147,10 +151,43 @@ run_act4cap_swat_postprocess <- function(model,
   out_csv <- file.path(swat_out_dir, sprintf('swat_plus_water_quality_summary_%s_%s.csv', tolower(model), tolower(scenario)))
   fwrite(swat_summary, out_csv)
 
+  # 5. Spatially explicit cell-level export (CSV & GeoTIFF rasters)
+  cell_csv <- NULL
+  tifs <- character(0)
+  if ('ns' %in% names(hru_dt)) {
+    cell_swat <- hru_dt[, .(
+      total_area_km2   = round(sum(crp_area_km2, na.rm = TRUE), 2),
+      runoff_coef      = round(weighted.mean(runoff_coef, crp_area_km2, na.rm = TRUE), 3),
+      n_leach_kg_ha    = round(weighted.mean(n_leach_risk_kg_ha, crp_area_km2, na.rm = TRUE), 2),
+      p_runoff_kg_ha   = round(weighted.mean(p_runoff_risk_kg_ha, crp_area_km2, na.rm = TRUE), 2),
+      sediment_t_ha    = round(weighted.mean(sediment_yield_t_ha, crp_area_km2, na.rm = TRUE), 2),
+      water_yield_mm   = round(weighted.mean(water_yield_mm, crp_area_km2, na.rm = TRUE), 2)
+    ), by = .(ns, Ns_reg, year)]
+
+    cell_csv <- file.path(swat_out_dir, sprintf('swat_plus_cells_%s_%s.csv', tolower(model), tolower(scenario)))
+    fwrite(cell_swat, cell_csv)
+    cli_alert_success('Saved spatially explicit cell-level summary: {basename(cell_csv)}')
+
+    tifs <- tryCatch(
+      export_indicators_to_geotiff(
+        cell_dt = cell_swat,
+        indicator_cols = c('n_leach_kg_ha', 'p_runoff_kg_ha', 'sediment_t_ha', 'water_yield_mm'),
+        out_dir = swat_out_dir,
+        prefix = sprintf('swat_%s_%s', tolower(model), tolower(scenario))
+      ),
+      error = function(e) {
+        cli_alert_warning('GeoTIFF raster export skipped: {e$message}')
+        character(0)
+      }
+    )
+  }
+
   composite_rds <- file.path(swat_out_dir, sprintf('swat_plus_composite_%s_%s.rds', tolower(model), tolower(scenario)))
   saveRDS(list(
     swat_summary = swat_summary,
-    metadata = list(
+    cell_summary = if (exists('cell_swat')) cell_swat else NULL,
+    rasters      = tifs,
+    metadata     = list(
       model          = model,
       scenario       = scenario,
       swat_dir       = swat_dir,
@@ -167,6 +204,8 @@ run_act4cap_swat_postprocess <- function(model,
     model         = model,
     scenario      = scenario,
     summary_csv   = out_csv,
+    cell_csv      = cell_csv,
+    rasters       = tifs,
     composite_rds = composite_rds,
     swat_dir      = swat_out_dir
   ))
