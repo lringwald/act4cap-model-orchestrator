@@ -41,7 +41,7 @@ RUN_BIODIVERSITY <- RUN_BIO_PARAM %in% c('1', 'true', 'TRUE', 'yes')
 YEARS            <- get_param('YEARS', 'all')
 RESOLUTION       <- get_param('RESOLUTION', '10km')
 NCORES           <- as.integer(get_param('NCORES', '4'))
-SMOKE            <- (get_param('SMOKE', '0') %in% c('1', 'true', 'TRUE', 'yes')) || (TASK == 'smoke')
+TRIAL            <- (get_param('TRIAL', '0') %in% c('1', 'true', 'TRUE', 'yes')) || (get_param('SMOKE', '0') %in% c('1', 'true', 'TRUE', 'yes')) || (TASK %in% c('trial', 'smoke'))
 FORCE            <- get_param('FORCE', '0') %in% c('1', 'true', 'TRUE', 'yes')
 WORK_DIR         <- get_param('WORK_DIR', '/mnt/wdrv/act4cap')
 OUTPUT_DIR       <- get_param('OUTPUT_DIR', 'outputs')
@@ -114,7 +114,7 @@ cli_alert_info('Spatial Mediator:  Cascade Interface [{gamble_dir_resolved}]')
 cli_alert_info('Subprocess Models: POSTMODELS={POSTMODELS} -> Water(SWAT+)={fifelse(run_swat_active, "ON", "OFF")}, Biodiversity={fifelse(run_bio_active, "ON", "OFF")}')
 cli_alert_info('Post-Model Mode:   {toupper(POSTMODEL_MODE)}')
 cli_alert_info('Grid Resolution:   {RESOLUTION}')
-cli_alert_info('Smoke Mode:        {fifelse(SMOKE, "YES (Fast minimal slice)", "NO (Full run)")}')
+cli_alert_info('Execution Mode:    {fifelse(TRIAL, "TRIAL (Fast verification slice)", "FULL (Production run)")}')
 cli_alert_info('Force Re-run:      {fifelse(FORCE, "YES (Recomputing & overwriting)", "NO (Auto-resolving & reusing existing step outputs)")}')
 cli_alert_info('Allocated Cores:   {NCORES}')
 
@@ -151,7 +151,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
   
   # Step 1: Spatial Mediation & Downscaling (Cascade Interface)
   downscale_res <- NULL
-  if (TASK %in% c('downscale', 'all', 'smoke')) {
+  if (TASK %in% c('downscale', 'all', 'trial', 'smoke')) {
     cli::cli_alert_info('  [Step 1/3] Running Cascade Spatial Mediation (Downscaling) for {toupper(m)} ({sc})...')
     downscale_res <- run_act4cap_cascade_downscaling(
       model = m,
@@ -161,7 +161,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       years = YEARS,
       resolution = RESOLUTION,
       ncores = cores,
-      smoke = SMOKE,
+      trial = TRIAL,
       force = FORCE,
       input_file = INPUT_FILE
     )
@@ -172,7 +172,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
   
   # Step 2: Environmental Post-Modelling (Side-by-Side Twin Post-Models)
   swat_res <- NULL
-  if ((TASK %in% c('swat', 'postprocess', 'all', 'smoke')) && run_swat_active) {
+  if ((TASK %in% c('swat', 'postprocess', 'all', 'trial', 'smoke')) && run_swat_active) {
     cli::cli_alert_info('  [Step 2A] Executing SWAT+ Water Quality for {toupper(m)} ({sc})...')
     swat_res <- run_act4cap_swat_postprocess(
       model = m,
@@ -181,14 +181,14 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       out_dir = out_path,
       swat_dir = swat_dir_resolved,
       postmodel_mode = POSTMODEL_MODE,
-      smoke = SMOKE,
+      trial = TRIAL,
       force = FORCE,
       ncores = cores
     )
   }
   
   bio_res <- NULL
-  if ((TASK %in% c('biodiversity', 'postprocess', 'all', 'smoke')) && run_bio_active) {
+  if ((TASK %in% c('biodiversity', 'postprocess', 'all', 'trial', 'smoke')) && run_bio_active) {
     cli::cli_alert_info('  [Step 2B] Executing Biodiversity Link for {toupper(m)} ({sc})...')
     bio_res <- run_act4cap_biodiversity_postprocess(
       model = m,
@@ -198,7 +198,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       bio_dir = bio_dir_resolved,
       mapping_file = bio_map_resolved,
       postmodel_mode = POSTMODEL_MODE,
-      smoke = SMOKE,
+      trial = TRIAL,
       force = FORCE,
       ncores = cores
     )
@@ -206,7 +206,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
   
   # Step 3: Multi-Pillar Synthesis and Indicator Packaging (converging 2A & 2B)
   synth_res <- NULL
-  if (TASK %in% c('all', 'postprocess', 'smoke')) {
+  if (TASK %in% c('all', 'postprocess', 'trial', 'smoke')) {
     cli::cli_alert_info('  [Step 3/3] Packaging unified multi-pillar indicator synthesis for {toupper(m)} ({sc})...')
     synth_res <- synthesize_act4cap_results(
       model = m,

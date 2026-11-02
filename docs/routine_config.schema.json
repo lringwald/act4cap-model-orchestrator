@@ -11,15 +11,16 @@
       "TASK": {
         "type": "string",
         "title": "Workflow / Task",
-        "description": "Workflow / Task -- Which workflow task to run: 'smoke' executes a minimal verification test proving the container, mounts, and interfaces; 'downscale' executes the necessary spatial mediation allocating macro economic targets to 10km grid cells with exact mass conservation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link side-by-side on mediated downscaling results; 'all' runs the complete pipeline (downscaling mediation + SWAT+ + Biodiversity Link).",
+        "description": "Workflow / Task -- Which workflow task to run: 'trial' executes a fast trial verification run proving the container, mounts, and interfaces; 'downscale' executes the necessary spatial mediation allocating macro economic targets to 10km grid cells with exact mass conservation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link side-by-side on mediated downscaling results; 'all' runs the complete pipeline (downscaling mediation + SWAT+ + Biodiversity Link).",
         "default": "all",
         "enum": [
-          "smoke",
+          "trial",
           "downscale",
           "swat",
           "biodiversity",
           "postprocess",
-          "all"
+          "all",
+          "smoke"
         ]
       },
       "MACRO_MODEL": {
@@ -102,10 +103,10 @@
         "description": "Parallel CPU Cores -- Number of CPU cores allocated for parallel raster processing, IPF gravity allocation, and catchment-level environmental calculations.",
         "default": "4"
       },
-      "SMOKE": {
+      "TRIAL": {
         "type": "string",
-        "title": "Smoke Test Mode",
-        "description": "Smoke Test Mode -- Set to 1 to run a fast smoke test over a regional 1-pixel slice, verifying container environment, mounts, and interfaces without full computation. Set to 0 for production.",
+        "title": "Fast Trial Run Mode",
+        "description": "Fast Trial Run Mode -- Set to 1 to run a fast trial run over a regional slice, verifying container environment, mounts, and interfaces without full computation. Set to 0 for production.",
         "default": "0",
         "enum": [
           "0",
@@ -167,11 +168,12 @@
       "POSTMODEL_MODE": {
         "type": "string",
         "title": "Post-Modelling Execution Mode",
-        "description": "Post-Modelling Execution Mode -- Execution mode for post-models: 'tentative' runs integrated analytical post-processing with graceful fallbacks; 'full' executes native cluster simulation pipelines; 'smoke' executes rapid plumbing proof.",
+        "description": "Post-Modelling Execution Mode -- Execution mode for post-models: 'tentative' runs integrated analytical post-processing with graceful fallbacks; 'full' executes native cluster simulation pipelines; 'trial' executes rapid verification proof.",
         "default": "tentative",
         "enum": [
           "tentative",
           "full",
+          "trial",
           "smoke"
         ]
       }

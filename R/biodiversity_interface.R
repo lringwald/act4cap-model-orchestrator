@@ -76,9 +76,11 @@ run_act4cap_biodiversity_postprocess <- function(model,
                                                 bio_dir = 'vendor/Biodiversity_Link',
                                                 mapping_file = 'config/mapping_agmip_to_biodiversity_link.csv',
                                                 postmodel_mode = 'tentative',
-                                                smoke = FALSE,
+                                                trial = FALSE,
                                                 force = FALSE,
-                                                ncores = 4) {
+                                                ncores = 4,
+                                                smoke = trial) {
+  is_trial <- trial || smoke
   cli_h3('Biodiversity Link Ecological Assessment [{toupper(model)} | {scenario}]')
   cli_alert_info('Engine Path: {bio_dir} (Mode: {toupper(postmodel_mode)})')
 
@@ -118,7 +120,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
       crp_area_km2 = rep(c(40.0, 30.0, 30.0), times = 5)
     )
   } else {
-    lu_dt <- fread(lu_file, nrows = fifelse(smoke, 2000L, Inf))
+    lu_dt <- fread(lu_file, nrows = fifelse(is_trial, 2000L, Inf))
     for (col in c('times', 'time')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'year', skip_absent = TRUE)
     for (col in c('value', 'area_km2', 'area')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'crp_area_km2', skip_absent = TRUE)
   }
@@ -212,7 +214,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
     csar_summary  = csar_summary,
     msa_summary   = msa_summary,
     mapping_table = map_dt,
-    cell_detail   = if (smoke) bio_dt else NULL,
+    cell_detail   = if (is_trial) bio_dt else NULL,
     metadata      = list(
       model           = model,
       scenario        = scenario,

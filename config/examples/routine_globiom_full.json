@@ -8,7 +8,7 @@
   "YEARS": "all",
   "RESOLUTION": "10km",
   "NCORES": "4",
-  "SMOKE": "0",
+  "TRIAL": "0",
   "FORCE": "0",
   "WORK_DIR": "/mnt/wdrv/act4cap",
   "OUTPUT_DIR": "outputs",

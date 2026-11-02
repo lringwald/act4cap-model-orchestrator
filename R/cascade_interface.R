@@ -125,8 +125,9 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir) {
   return(list(model = model, scenario = scenario, lu_csv = NULL, out_folder = out_dir))
 }
 
-run_act4cap_cascade_downscaling <- function(model, scenario, gamble_dir, out_dir, years, resolution, ncores, smoke, force, input_file = "") {
+run_act4cap_cascade_downscaling <- function(model, scenario, gamble_dir, out_dir, years, resolution, ncores, trial = FALSE, force = FALSE, input_file = "", smoke = trial) {
   cli_alert_info('Initiating Cascade downscaling execution for model={toupper(model)}, scenario={scenario}...')
+  is_trial <- trial || smoke
   
   # Resolve input file / latest vintage in macro_model folder
   vintage_info <- resolve_macro_model_vintage(
@@ -164,29 +165,29 @@ run_act4cap_cascade_downscaling <- function(model, scenario, gamble_dir, out_dir
     return(locate_existing_downscaling(model, scenario, out_dir, gamble_dir))
   }
   
-  # 3. In smoke mode, locate existing or write tiny subset
-  if (smoke) {
-    smoke_dir <- file.path(out_dir, sprintf('DS_ACT4CAP_AgMIP_%s_10km_SMOKE', toupper(model)))
-    smoke_csv <- file.path(smoke_dir, sprintf('DS_ACT4CAP_AgMIP_%s_10km_lu_base.csv', toupper(model)))
+  # 3. In trial mode, locate existing or write tiny subset
+  if (is_trial) {
+    trial_dir <- file.path(out_dir, sprintf('DS_ACT4CAP_AgMIP_%s_10km_TRIAL', toupper(model)))
+    trial_csv <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_10km_lu_base.csv', toupper(model)))
     
-    if (!force && file.exists(smoke_csv)) {
-      cli_alert_success('Reusing existing smoke downscaling test file: {basename(smoke_csv)} [FORCE=0]')
-      return(list(model = model, scenario = scenario, lu_csv = smoke_csv, out_folder = smoke_dir, input_vintage = vintage_info, cached = TRUE))
+    if (!force && file.exists(trial_csv)) {
+      cli_alert_success('Reusing existing trial downscaling test file: {basename(trial_csv)} [FORCE=0]')
+      return(list(model = model, scenario = scenario, lu_csv = trial_csv, out_folder = trial_dir, input_vintage = vintage_info, cached = TRUE))
     }
     
-    cli_alert_info('Smoke test mode: generating lightweight test slice for {toupper(model)} (vintage: {vintage_info$name})...')
-    if (!dir.exists(smoke_dir)) dir.create(smoke_dir, recursive = TRUE)
+    cli_alert_info('Trial mode: generating lightweight test slice for {toupper(model)} (vintage: {vintage_info$name})...')
+    if (!dir.exists(trial_dir)) dir.create(trial_dir, recursive = TRUE)
     
-    smoke_dt <- data.table(
+    trial_dt <- data.table(
       ns = c(1L, 1L, 1L, 1L, 2L, 2L),
       Ns_reg = c('DEU', 'DEU', 'DEU', 'DEU', 'FRA', 'FRA'),
       year = c(2020L, 2020L, 2050L, 2050L, 2020L, 2050L),
       lu = c('CRP|ARA|WHT', 'FOR|MAN', 'CRP|ARA|WHT', 'FOR|MAN', 'CRP|ARA', 'FOR|PRIM'),
       crp_area_km2 = c(45.5, 30.2, 50.0, 28.1, 60.0, 40.0)
     )
-    fwrite(smoke_dt, smoke_csv)
-    cli_alert_success('Created smoke downscaling test file: {basename(smoke_csv)}')
-    return(list(model = model, scenario = scenario, lu_csv = smoke_csv, out_folder = smoke_dir, input_vintage = vintage_info, cached = FALSE))
+    fwrite(trial_dt, trial_csv)
+    cli_alert_success('Created trial downscaling test file: {basename(trial_csv)}')
+    return(list(model = model, scenario = scenario, lu_csv = trial_csv, out_folder = trial_dir, input_vintage = vintage_info, cached = FALSE))
   }
   
   # 4. Production dispatch via Rscript run_downscaling.R

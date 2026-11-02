@@ -1,0 +1,17 @@
+{
+  "_comment": "Fast trial verification run: verifies cluster environment, mount, and interfaces in ~1 min",
+  "TASK": "trial",
+  "MACRO_MODEL": "globiom",
+  "SCENARIO": "base",
+  "RUN_SWAT": "1",
+  "RUN_BIODIVERSITY": "1",
+  "YEARS": "2020",
+  "RESOLUTION": "10km",
+  "NCORES": "2",
+  "TRIAL": "1",
+  "FORCE": "1",
+  "WORK_DIR": "/mnt/wdrv/act4cap",
+  "OUTPUT_DIR": "outputs",
+  "INPUT_DIR": "inputs",
+  "CASCADING_GAMBLE_DIR": "/app/cascadinggamble-core"
+}

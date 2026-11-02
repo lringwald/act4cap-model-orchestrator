@@ -19,9 +19,11 @@ run_act4cap_swat_postprocess <- function(model,
                                         out_dir,
                                         swat_dir = 'Q:/swatplus_runs',
                                         postmodel_mode = 'tentative',
-                                        smoke = FALSE,
+                                        trial = FALSE,
                                         force = FALSE,
-                                        ncores = 4) {
+                                        ncores = 4,
+                                        smoke = trial) {
+  is_trial <- trial || smoke
   cli_h3('SWAT+ Water Quality Simulation [{toupper(model)} | {scenario}]')
   cli_alert_info('SWAT+ Toolkit Path: {swat_dir} (Mode: {toupper(postmodel_mode)})')
 
@@ -70,7 +72,7 @@ run_act4cap_swat_postprocess <- function(model,
       crp_area_km2 = rep(c(40.0, 30.0, 30.0), times = 5)
     )
   } else {
-    lu_dt <- fread(lu_file, nrows = fifelse(smoke, 2000L, Inf))
+    lu_dt <- fread(lu_file, nrows = fifelse(is_trial, 2000L, Inf))
     for (col in c('times', 'time')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'year', skip_absent = TRUE)
     for (col in c('value', 'area_km2', 'area')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'crp_area_km2', skip_absent = TRUE)
   }

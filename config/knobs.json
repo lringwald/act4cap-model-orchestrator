@@ -23,14 +23,15 @@
       "scope": "operational",
       "label": "Workflow / Task",
       "enum": [
-        "smoke",
+        "trial",
         "downscale",
         "swat",
         "biodiversity",
         "postprocess",
-        "all"
+        "all",
+        "smoke"
       ],
-      "desc": "Which workflow task to run: 'smoke' executes a minimal verification test proving the container, mounts, and interfaces; 'downscale' executes the necessary spatial mediation allocating macro economic targets to 10km grid cells with exact mass conservation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link side-by-side on mediated downscaling results; 'all' runs the complete pipeline (downscaling mediation + SWAT+ + Biodiversity Link).",
+      "desc": "Which workflow task to run: 'trial' executes a fast trial verification run proving the container, mounts, and interfaces; 'downscale' executes the necessary spatial mediation allocating macro economic targets to 10km grid cells with exact mass conservation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link side-by-side on mediated downscaling results; 'all' runs the complete pipeline (downscaling mediation + SWAT+ + Biodiversity Link).",
       "tasks": []
     },
     {
@@ -187,18 +188,18 @@
       "tasks": []
     },
     {
-      "name": "SMOKE",
-      "env": "SMOKE",
+      "name": "TRIAL",
+      "env": "TRIAL",
       "type": "string",
       "default": "0",
       "blank": "0",
       "scope": "operational",
-      "label": "Smoke Test Mode",
+      "label": "Fast Trial Run Mode",
       "enum": [
         "0",
         "1"
       ],
-      "desc": "Set to 1 to run a fast smoke test over a regional 1-pixel slice, verifying container environment, mounts, and interfaces without full computation. Set to 0 for production.",
+      "desc": "Set to 1 to run a fast trial run over a regional slice, verifying container environment, mounts, and interfaces without full computation. Set to 0 for production.",
       "tasks": []
     },
     {
@@ -316,9 +317,10 @@
       "enum": [
         "tentative",
         "full",
+        "trial",
         "smoke"
       ],
-      "desc": "Execution mode for post-models: 'tentative' runs integrated analytical post-processing with graceful fallbacks; 'full' executes native cluster simulation pipelines; 'smoke' executes rapid plumbing proof.",
+      "desc": "Execution mode for post-models: 'tentative' runs integrated analytical post-processing with graceful fallbacks; 'full' executes native cluster simulation pipelines; 'trial' executes rapid verification proof.",
       "tasks": [
         "swat",
         "biodiversity",

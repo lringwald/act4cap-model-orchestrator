@@ -20,7 +20,7 @@ if [ ! -f R/orchestrator.R ]; then
   exit 1
 fi
 
-TASKS="smoke downscale swat biodiversity postprocess all"
+TASKS="trial downscale swat biodiversity postprocess all smoke"
 is_task() { case " $TASKS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # --- load knob defaults from generated registry ---
@@ -46,11 +46,11 @@ fi
 
 # --- normalise boolean / optional switches ---
 off() { case "$(printf '%s' "${1:-}" | tr 'A-Z' 'a-z')" in ""|0|no|off|false|auto|default) return 0;; *) return 1;; esac; }
-for v in SMOKE FORCE; do
+for v in TRIAL SMOKE FORCE; do
   if off "${!v:-}"; then export "$v=0"; else export "$v=1"; fi
 done
 
-export TASK MACRO_MODEL INPUT_FILE SCENARIO POSTMODELS RUN_SWAT RUN_BIODIVERSITY YEARS RESOLUTION NCORES WORK_DIR OUTPUT_DIR INPUT_DIR CASCADING_GAMBLE_DIR SWATPLUS_DIR BIODIVERSITY_LINK_DIR POSTMODEL_MODE
+export TASK MACRO_MODEL INPUT_FILE SCENARIO POSTMODELS RUN_SWAT RUN_BIODIVERSITY YEARS RESOLUTION NCORES WORK_DIR OUTPUT_DIR INPUT_DIR CASCADING_GAMBLE_DIR SWATPLUS_DIR BIODIVERSITY_LINK_DIR BIODIVERSITY_MAPPING_FILE POSTMODEL_MODE TRIAL FORCE
 
 if ! is_task "$TASK"; then
   echo "ERROR: unknown TASK '$TASK'. Allowed: $TASKS" >&2; exit 1

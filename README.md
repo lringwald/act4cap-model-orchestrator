@@ -14,7 +14,7 @@ The routine is fully configured by `config.json` adhering to `docs/routine_confi
 
 | Knob | Type | Default | Description |
 | :--- | :---: | :---: | :--- |
-| `TASK` | enum | `all` | `all`, `downscale` (mediator), `swat`, `biodiversity`, `postprocess`, `smoke` |
+| `TASK` | enum | `all` | `all`, `downscale` (mediator), `swat`, `biodiversity`, `postprocess`, `trial` |
 | `MACRO_MODEL` | enum | `globiom` | `globiom`, `capri`, `image`, `magnet`, `clumondo`, `all` |
 | `SCENARIO` | enum | `base` | `base`, `all` |
 | `RUN_SWAT` | enum | `1` | `1` to run SWAT+ water quality model, `0` to skip |
@@ -22,14 +22,15 @@ The routine is fully configured by `config.json` adhering to `docs/routine_confi
 | `YEARS` | string | `all` | `all` (2000-2050) or comma-separated years |
 | `RESOLUTION` | enum | `10km` | `10km` (standard EEA EPSG:3035) or `1km` |
 | `NCORES` | string | `4` | Parallel CPU cores |
-| `SMOKE` | enum | `0` | Set to `1` for ~1-minute plumbing proof run |
+| `TRIAL` | enum | `0` | Set to `1` for fast verification trial run (~1-minute plumbing proof) |
 | `FORCE` | enum | `0` | Set to `1` to overwrite completed stages |
 | `WORK_DIR` | string | `/mnt/wdrv/act4cap` | Cluster FUSE mount path |
 | `OUTPUT_DIR` | string | `outputs` | Output folder relative to WORK_DIR |
 | `CASCADING_GAMBLE_DIR` | string | `/app/gamble-cascade` | Path to Cascade Interface downscaling suite (spatial mediator) |
-| `SWATPLUS_DIR` | string | `/mnt/wdrv/act4cap/swatplus_runs` | SWAT+ pipeline scripts (0-6) & HRU datasets (`Q:/swatplus_runs` locally) |
+| `SWATPLUS_DIR` | string | `/mnt/wdrv/act4cap/swatplus_runs` | SWAT+ pipeline scripts (0-6) & HRU datasets (`swatplus_runs` locally) |
 | `BIODIVERSITY_LINK_DIR` | string | `vendor/Biodiversity_Link` | IIASA Biodiversity_Link repository path (`6cc4443f`) |
-| `POSTMODEL_MODE` | enum | `tentative` | `tentative` (integrated proxy), `full` (native cluster runs), `smoke` |
+| `BIODIVERSITY_MAPPING_FILE` | string | `config/mapping_agmip_to_biodiversity_link.csv` | Crosswalk between AgMIP downscaled classes and IIASA Biodiversity Link categories |
+| `POSTMODEL_MODE` | enum | `tentative` | `tentative` (integrated proxy), `full` (native cluster runs), `trial` |
 
 ---
 
@@ -42,8 +43,8 @@ Rscript init.R
 # 2. Re-generate schema and shell registry if knobs change
 Rscript tools/gen_config.R
 
-# 3. Execute smoke test
-TASK=smoke MACRO_MODEL=globiom bash entrypoint.sh
+# 3. Execute fast trial run
+TASK=trial MACRO_MODEL=globiom bash entrypoint.sh
 
 # 4. Execute production run
 TASK=all MACRO_MODEL=globiom bash entrypoint.sh
