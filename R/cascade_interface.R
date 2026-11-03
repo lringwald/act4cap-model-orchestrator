@@ -228,10 +228,9 @@ run_act4cap_cascade_downscaling <- function(model,
                                            input_file = "latest",
                                            downscale_output = "auto",
                                            run_date = NULL,
-                                           version_tag = NULL,
-                                           smoke = trial) {
+                                           version_tag = NULL) {
   cli_alert_info('Initiating Cascade downscaling execution for model={toupper(model)}, scenario={scenario}...')
-  is_trial <- trial || smoke
+  is_trial <- trial
   
   # Resolve input file / latest vintage in macro_model folder
   vintage_info <- resolve_macro_model_vintage(

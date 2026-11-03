@@ -1,26 +1,32 @@
 #!/usr/bin/env bash
 # =============================================================================
-# entrypoint.sh — routine entrypoint for Act4Cap Orchestrator
+# entrypoint.sh — Act4Cap Integrated Downscaling & Environmental Routine
 # =============================================================================
-# Dispatches a containerised Act4Cap execution routine on WKUBE cluster.
-# Coordinates: Cascading Gamble Downscaling -> SWAT+ -> Biodiversity Link
+# Entrypoint for the WKUBE routine container. Sources config defaults, parses
+# environment variable overrides, validates TASK, and invokes R/orchestrator.R.
 # =============================================================================
-set -eo pipefail
+set -euo pipefail
 
-# --- resolve application root directory ---
-if [ -z "${APP_DIR:-}" ]; then
-  _d="$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo .)"
-  if   [ -f "$_d/R/orchestrator.R" ]; then APP_DIR="$_d"
-  elif [ -f /app/R/orchestrator.R  ]; then APP_DIR=/app
-  else APP_DIR="$_d"; fi
+# --- help dispatch ---
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  echo "Act4Cap Integrated Modelling Orchestrator"
+  echo "Usage: entrypoint.sh [TASK]"
+  echo "Tasks: trial | downscale | swat | biodiversity | postprocess | all"
+  echo "Environment variables configure execution; see docs/routine_config.schema.json"
+  exit 0
 fi
-cd "$APP_DIR" 2>/dev/null || { echo "ERROR: APP_DIR '$APP_DIR' is not a directory" >&2; exit 1; }
-if [ ! -f R/orchestrator.R ]; then
-  echo "ERROR: no R/orchestrator.R found under '$PWD'. Set APP_DIR to the repo root." >&2
+
+if [ "${1:-}" = "--version" ]; then
+  cat .build_id 2>/dev/null || echo "development"
+  exit 0
+fi
+
+if [ -n "${1:-}" ] && [[ "$1" != -* ]] && [[ "$1" != *=* ]]; then
+  echo "ERROR: Positional task argument '$1' is deprecated. Pass TASK=$1 as an environment variable or config." >&2
   exit 1
 fi
 
-TASKS="trial downscale swat biodiversity postprocess all smoke"
+TASKS="trial downscale swat biodiversity postprocess all"
 is_task() { case " $TASKS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # --- load knob defaults from generated registry ---
@@ -46,11 +52,11 @@ fi
 
 # --- normalise boolean / optional switches ---
 off() { case "$(printf '%s' "${1:-}" | tr 'A-Z' 'a-z')" in ""|0|no|off|false|auto|default) return 0;; *) return 1;; esac; }
-for v in TRIAL SMOKE FORCE; do
+for v in TRIAL FORCE; do
   if off "${!v:-}"; then export "$v=0"; else export "$v=1"; fi
 done
 
-export TASK MACRO_MODEL INPUT_FILE SCENARIO POSTMODELS RUN_SWAT RUN_BIODIVERSITY YEARS RESOLUTION NCORES WORK_DIR OUTPUT_DIR INPUT_DIR CASCADING_GAMBLE_DIR SWATPLUS_DIR BIODIVERSITY_LINK_DIR BIODIVERSITY_MAPPING_FILE POSTMODEL_MODE TRIAL FORCE
+export TASK MACRO_MODEL INPUT_FILE CUSTOM_INPUT_FILE DOWNSCALE_OUTPUT SCENARIO POSTMODELS RUN_SWAT RUN_BIODIVERSITY YEARS RESOLUTION NCORES WORK_DIR OUTPUT_DIR INPUT_DIR CASCADING_GAMBLE_DIR SWATPLUS_DIR BIODIVERSITY_LINK_DIR BIODIVERSITY_MAPPING_FILE POSTMODEL_MODE TRIAL FORCE
 
 if ! is_task "$TASK"; then
   echo "ERROR: unknown TASK '$TASK'. Allowed: $TASKS" >&2; exit 1

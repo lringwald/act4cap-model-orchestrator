@@ -19,8 +19,7 @@
           "swat",
           "biodiversity",
           "postprocess",
-          "all",
-          "smoke"
+          "all"
         ]
       },
       "MACRO_MODEL": {
@@ -200,8 +199,7 @@
         "enum": [
           "tentative",
           "full",
-          "trial",
-          "smoke"
+          "trial"
         ]
       }
     }

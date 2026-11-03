@@ -35,9 +35,8 @@ run_act4cap_swat_postprocess <- function(model,
                                          resolution = '10km',
                                          run_date = NULL,
                                          version_tag = NULL,
-                                         macro_output = NULL,
-                                         smoke = trial) {
-  is_trial <- trial || smoke
+                                         macro_output = NULL) {
+  is_trial <- trial
   cli_h3('SWAT+ Water Quality Simulation [{toupper(model)} | {scenario}]')
   cli_alert_info('SWAT+ Toolkit Path: {swat_dir} (Mode: {toupper(postmodel_mode)})')
 

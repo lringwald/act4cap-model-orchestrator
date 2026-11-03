@@ -70,10 +70,8 @@ construct_version_tag <- function(model,
                                   resolution = "10km",
                                   date = NULL,
                                   trial = FALSE,
-                                  custom_tag = NULL,
-                                  smoke = trial) {
-  is_trial <- isTRUE(trial) || identical(trial, "1") || identical(trial, 1L) ||
-              isTRUE(smoke) || identical(smoke, "1") || identical(smoke, 1L)
+                                  custom_tag = NULL) {
+  is_trial <- isTRUE(trial) || identical(trial, "1") || identical(trial, 1L)
   
   m_str  <- tolower(clean_token(model))
   sc_str <- tolower(clean_token(scenario))

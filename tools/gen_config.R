@@ -52,7 +52,7 @@ scan_downscale_outputs <- function(fallback_enums = character(0)) {
     cands <- c(cands, basename(found))
   }
   cands <- unique(cands)
-  cands <- cands[!grepl("_luc|smoke", cands, ignore.case = TRUE)]
+  cands <- cands[grepl("^DS_ACT4CAP_AgMIP_[A-Za-z0-9]+_[0-9]+km_([0-9]{8}|TRIAL)$", cands)]
   if (length(cands) > 0) {
     cands <- sort(cands, decreasing = TRUE)
     return(unique(c("auto", cands, fallback_enums, "none")))

@@ -28,8 +28,7 @@
         "swat",
         "biodiversity",
         "postprocess",
-        "all",
-        "smoke"
+        "all"
       ],
       "desc": "Which workflow task to run: 'trial' executes a fast trial verification run proving the container, mounts, and interfaces; 'downscale' executes the necessary spatial mediation allocating macro economic targets to 10km grid cells with exact mass conservation; 'swat' runs the SWAT+ water model post-processor; 'biodiversity' runs the Biodiversity Link post-processor; 'postprocess' runs SWAT+ and Biodiversity Link side-by-side on mediated downscaling results; 'all' runs the complete pipeline (downscaling mediation + SWAT+ + Biodiversity Link).",
       "tasks": []
@@ -393,8 +392,7 @@
       "enum": [
         "tentative",
         "full",
-        "trial",
-        "smoke"
+        "trial"
       ],
       "desc": "Execution mode for post-models: 'tentative' runs integrated analytical post-processing with graceful fallbacks; 'full' executes native cluster simulation pipelines; 'trial' executes rapid verification proof.",
       "tasks": [
