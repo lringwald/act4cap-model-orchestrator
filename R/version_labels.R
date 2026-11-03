@@ -84,14 +84,18 @@ construct_version_tag <- function(model,
   if (!grepl("km$", res_clean)) res_clean <- paste0(res_clean, "km")
   
   # Date (YYYYMMDD)
-  date_str <- if (!is.null(date) && nzchar(date) && date != "auto") {
+  date_str <- if (!is.null(date) && nzchar(date) && date != "auto" && date != "today") {
     clean_token(date)
   } else {
     format(Sys.Date(), "%Y%m%d")
   }
   
-  # Custom tag (optional)
-  ctag_str <- if (!is.null(custom_tag) && nzchar(custom_tag)) clean_token(custom_tag) else NULL
+  # Custom tag (optional; 'auto' or 'none' inherits macro output stem without extra suffix)
+  ctag_str <- if (!is.null(custom_tag) && nzchar(custom_tag) && custom_tag != "auto" && custom_tag != "none") {
+    clean_token(custom_tag)
+  } else {
+    NULL
+  }
   
   # Trial mode tag
   trial_str <- if (is_trial) "TRIAL" else NULL

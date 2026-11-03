@@ -113,7 +113,7 @@ all_scenarios <- c('base', 'mitigation', 'diet', 'biodiversity')
 scenarios_to_run <- if ('all' %in% scenario_tokens) all_scenarios else unique(scenario_tokens)
 
 # 4. Preview / Resolve input vintage
-active_input_file <- if (nzchar(CUSTOM_INPUT_FILE)) CUSTOM_INPUT_FILE else INPUT_FILE
+active_input_file <- if (nzchar(CUSTOM_INPUT_FILE) && CUSTOM_INPUT_FILE != "none") CUSTOM_INPUT_FILE else INPUT_FILE
 vintage_preview   <- resolve_macro_model_vintage(active_input_file, model = models_to_run[1], input_dir = INPUT_DIR, gamble_dir = gamble_dir_resolved)
 
 cli_h1('Act4Cap Integrated Modelling Orchestrator')
@@ -126,8 +126,8 @@ cli_alert_info('Spatial Mediator:  Cascade Interface [{gamble_dir_resolved}]')
 cli_alert_info('Subprocess Models: POSTMODELS={POSTMODELS} -> Water(SWAT+)={fifelse(run_swat_active, "ON", "OFF")}, Biodiversity={fifelse(run_bio_active, "ON", "OFF")}')
 cli_alert_info('Post-Model Mode:   {toupper(POSTMODEL_MODE)}')
 cli_alert_info('Grid Resolution:   {RESOLUTION}')
-cli_alert_info('Version Date:      {fifelse(nzchar(RUN_DATE), RUN_DATE, paste0(format(Sys.Date(), "%Y%m%d"), " (auto)"))}')
-if (nzchar(VERSION_TAG)) cli_alert_info('Custom Version Tag: {VERSION_TAG}')
+cli_alert_info('Version Date:      {fifelse(nzchar(RUN_DATE) && RUN_DATE != "today", RUN_DATE, paste0(format(Sys.Date(), "%Y%m%d"), " (today)"))}')
+if (nzchar(VERSION_TAG) && VERSION_TAG != "auto" && VERSION_TAG != "none") cli_alert_info('Custom Version Tag: {VERSION_TAG}')
 cli_alert_info('Execution Mode:    {fifelse(TRIAL, "TRIAL (Fast verification slice)", "FULL (Production run)")}')
 cli_alert_info('Force Re-run:      {fifelse(FORCE, "YES (Recomputing & overwriting)", "NO (Auto-resolving & reusing existing step outputs)")}')
 cli_alert_info('Allocated Cores:   {NCORES}')
