@@ -55,11 +55,65 @@
       "name": "INPUT_FILE",
       "env": "INPUT_FILE",
       "type": "string",
+      "default": "latest",
+      "blank": "latest",
+      "scope": "model",
+      "label": "Macro Model Input File / Vintage",
+      "enum": [
+        "latest",
+        "20260916_compr_scens_merge.csv",
+        "20260319_MAGNET_AgMIP_accelerator.csv",
+        "20260305_MAGNET_AgMIP.csv",
+        "20260221_MAGNET_AgMIP_accelerator.csv",
+        "20251218_MAGNET_AgMIP_accelerator.csv",
+        "CAPRI_act4cap27_results_20260518.csv",
+        "CAPRI_act4cap27_results_20260415.csv",
+        "CAPRI_act4cap27_results_20260413.csv"
+      ],
+      "desc": "Specific macro-economic data vintage to process from the model outputs folder. Select 'latest' to automatically detect the newest date vintage available, or choose a specific vintage from the dropdown menu.",
+      "tasks": [
+        "downscale",
+        "swat",
+        "biodiversity",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "CUSTOM_INPUT_FILE",
+      "env": "CUSTOM_INPUT_FILE",
+      "type": "string",
       "default": "",
       "blank": "",
       "scope": "model",
-      "label": "Macro Model Input File / Vintage",
-      "desc": "Specific macro-economic data filename or path to process (e.g. '20260916_compr_scens_merge.csv'). If left empty or set to 'latest', the orchestrator automatically detects and selects the newest date vintage available in the macro_model folder.",
+      "label": "Custom Macro Input File (Optional Path Override)",
+      "desc": "Optional manual file path or external file name for macro-economic data. If specified, overrides the dropdown selection in Macro Model Input File / Vintage.",
+      "tasks": [
+        "downscale",
+        "swat",
+        "biodiversity",
+        "postprocess",
+        "all"
+      ]
+    },
+    {
+      "name": "DOWNSCALE_OUTPUT",
+      "env": "DOWNSCALE_OUTPUT",
+      "type": "string",
+      "default": "auto",
+      "blank": "auto",
+      "scope": "model",
+      "label": "Precomputed Downscaling in Target Folder",
+      "enum": [
+        "auto",
+        "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001",
+        "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001",
+        "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001",
+        "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001",
+        "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001",
+        "none"
+      ],
+      "desc": "Select an available pre-computed 10km downscaling output from the target folder (W:/cascade_gamble_outputs), or 'auto' to automatically match the selected macro model and scenario, or 'none' to force fresh spatial mediation.",
       "tasks": [
         "downscale",
         "swat",

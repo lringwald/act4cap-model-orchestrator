@@ -42,9 +42,9 @@ props <- lapply(reg, function(k) {
   p <- list(
     type = k$type,
     title = if (nzchar(k$label)) k$label else k$name,
-    description = desc
+    description = desc,
+    default = k$default
   )
-  if (!blank) p$default <- k$default
   if (!is.null(k$enum)) p$enum <- k$enum
   p
 })

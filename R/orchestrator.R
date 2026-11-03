@@ -31,18 +31,20 @@ get_param <- function(key, default = NULL) {
   return(default)
 }
 
-TASK             <- tolower(get_param('TASK', 'all'))
-MACRO_MODEL      <- tolower(get_param('MACRO_MODEL', 'globiom'))
-INPUT_FILE       <- get_param('INPUT_FILE', '')
-SCENARIO         <- tolower(get_param('SCENARIO', 'base'))
-POSTMODELS       <- tolower(get_param('POSTMODELS', 'all'))
-RUN_SWAT_PARAM   <- get_param('RUN_SWAT', '1')
-RUN_BIO_PARAM    <- get_param('RUN_BIODIVERSITY', '1')
-RUN_SWAT         <- RUN_SWAT_PARAM %in% c('1', 'true', 'TRUE', 'yes')
-RUN_BIODIVERSITY <- RUN_BIO_PARAM %in% c('1', 'true', 'TRUE', 'yes')
-YEARS            <- get_param('YEARS', 'all')
-RESOLUTION       <- get_param('RESOLUTION', '10km')
-NCORES           <- as.integer(get_param('NCORES', '4'))
+TASK              <- tolower(get_param('TASK', 'all'))
+MACRO_MODEL       <- tolower(get_param('MACRO_MODEL', 'globiom'))
+INPUT_FILE        <- get_param('INPUT_FILE', 'latest')
+CUSTOM_INPUT_FILE <- get_param('CUSTOM_INPUT_FILE', '')
+DOWNSCALE_OUTPUT  <- get_param('DOWNSCALE_OUTPUT', 'auto')
+SCENARIO          <- tolower(get_param('SCENARIO', 'base'))
+POSTMODELS        <- tolower(get_param('POSTMODELS', 'all'))
+RUN_SWAT_PARAM    <- get_param('RUN_SWAT', '1')
+RUN_BIO_PARAM     <- get_param('RUN_BIODIVERSITY', '1')
+RUN_SWAT          <- RUN_SWAT_PARAM %in% c('1', 'true', 'TRUE', 'yes')
+RUN_BIODIVERSITY  <- RUN_BIO_PARAM %in% c('1', 'true', 'TRUE', 'yes')
+YEARS             <- get_param('YEARS', 'all')
+RESOLUTION        <- get_param('RESOLUTION', '10km')
+NCORES            <- as.integer(get_param('NCORES', '4'))
 TRIAL            <- (get_param('TRIAL', '0') %in% c('1', 'true', 'TRUE', 'yes')) || (get_param('SMOKE', '0') %in% c('1', 'true', 'TRUE', 'yes')) || (TASK %in% c('trial', 'smoke'))
 FORCE            <- get_param('FORCE', '0') %in% c('1', 'true', 'TRUE', 'yes')
 RUN_DATE         <- get_param('RUN_DATE', '')
@@ -111,12 +113,14 @@ all_scenarios <- c('base', 'mitigation', 'diet', 'biodiversity')
 scenarios_to_run <- if ('all' %in% scenario_tokens) all_scenarios else unique(scenario_tokens)
 
 # 4. Preview / Resolve input vintage
-vintage_preview <- resolve_macro_model_vintage(INPUT_FILE, model = models_to_run[1], input_dir = INPUT_DIR, gamble_dir = gamble_dir_resolved)
+active_input_file <- if (nzchar(CUSTOM_INPUT_FILE)) CUSTOM_INPUT_FILE else INPUT_FILE
+vintage_preview   <- resolve_macro_model_vintage(active_input_file, model = models_to_run[1], input_dir = INPUT_DIR, gamble_dir = gamble_dir_resolved)
 
 cli_h1('Act4Cap Integrated Modelling Orchestrator')
 cli_alert_info('Task:              {toupper(TASK)}')
 cli_alert_info('Macro Model(s):    {paste(toupper(models_to_run), collapse=", ")}')
 cli_alert_info('Macro Input File:  {vintage_preview$name} [{vintage_preview$source}]')
+if (DOWNSCALE_OUTPUT != "auto") cli_alert_info('Downscale Output:  {DOWNSCALE_OUTPUT}')
 cli_alert_info('Scenario(s):       {paste(scenarios_to_run, collapse=", ")}')
 cli_alert_info('Spatial Mediator:  Cascade Interface [{gamble_dir_resolved}]')
 cli_alert_info('Subprocess Models: POSTMODELS={POSTMODELS} -> Water(SWAT+)={fifelse(run_swat_active, "ON", "OFF")}, Biodiversity={fifelse(run_bio_active, "ON", "OFF")}')
@@ -183,13 +187,14 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       ncores = cores,
       trial = TRIAL,
       force = FORCE,
-      input_file = INPUT_FILE,
+      input_file = active_input_file,
+      downscale_output = DOWNSCALE_OUTPUT,
       run_date = RUN_DATE,
       version_tag = VERSION_TAG
     )
   } else {
     cli::cli_alert_info('  [Step 1/3] Skipping Spatial Mediation (TASK={TASK}). Locating existing mediated maps...')
-    downscale_res <- locate_existing_downscaling(m, sc, out_path, gamble_dir_resolved)
+    downscale_res <- locate_existing_downscaling(m, sc, out_path, gamble_dir_resolved, downscale_output = DOWNSCALE_OUTPUT)
   }
   
   # Step 2: Environmental Post-Modelling (Side-by-Side Twin Post-Models)

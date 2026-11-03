@@ -32,7 +32,40 @@
       "INPUT_FILE": {
         "type": "string",
         "title": "Macro Model Input File / Vintage",
-        "description": "Macro Model Input File / Vintage -- Specific macro-economic data filename or path to process (e.g. '20260916_compr_scens_merge.csv'). If left empty or set to 'latest', the orchestrator automatically detects and selects the newest date vintage available in the macro_model folder. OPTIONAL: leave empty for the built-in default."
+        "description": "Macro Model Input File / Vintage -- Specific macro-economic data vintage to process from the model outputs folder. Select 'latest' to automatically detect the newest date vintage available, or choose a specific vintage from the dropdown menu.",
+        "default": "latest",
+        "enum": [
+          "latest",
+          "20260916_compr_scens_merge.csv",
+          "20260319_MAGNET_AgMIP_accelerator.csv",
+          "20260305_MAGNET_AgMIP.csv",
+          "20260221_MAGNET_AgMIP_accelerator.csv",
+          "20251218_MAGNET_AgMIP_accelerator.csv",
+          "CAPRI_act4cap27_results_20260518.csv",
+          "CAPRI_act4cap27_results_20260415.csv",
+          "CAPRI_act4cap27_results_20260413.csv"
+        ]
+      },
+      "CUSTOM_INPUT_FILE": {
+        "type": "string",
+        "title": "Custom Macro Input File (Optional Path Override)",
+        "description": "Custom Macro Input File (Optional Path Override) -- Optional manual file path or external file name for macro-economic data. If specified, overrides the dropdown selection in Macro Model Input File / Vintage. OPTIONAL: leave empty for the built-in default.",
+        "default": ""
+      },
+      "DOWNSCALE_OUTPUT": {
+        "type": "string",
+        "title": "Precomputed Downscaling in Target Folder",
+        "description": "Precomputed Downscaling in Target Folder -- Select an available pre-computed 10km downscaling output from the target folder (W:/cascade_gamble_outputs), or 'auto' to automatically match the selected macro model and scenario, or 'none' to force fresh spatial mediation.",
+        "default": "auto",
+        "enum": [
+          "auto",
+          "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001",
+          "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001",
+          "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001",
+          "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001",
+          "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001",
+          "none"
+        ]
       },
       "POSTMODELS": {
         "type": "string",
@@ -126,12 +159,14 @@
       "RUN_DATE": {
         "type": "string",
         "title": "Run Date / Version Date",
-        "description": "Run Date / Version Date -- Date label used in output directories and filenames (e.g. '20261103'). If left empty, automatically defaults to the current system date (YYYYMMDD). OPTIONAL: leave empty for the built-in default."
+        "description": "Run Date / Version Date -- Date label used in output directories and filenames (e.g. '20261103'). If left empty, automatically defaults to the current system date (YYYYMMDD). OPTIONAL: leave empty for the built-in default.",
+        "default": ""
       },
       "VERSION_TAG": {
         "type": "string",
         "title": "Custom Output Version Tag",
-        "description": "Custom Output Version Tag -- Optional additional version label or run identifier appended to all output directories and filenames (e.g. 'v1', 'deliv3', 'exp_test'). OPTIONAL: leave empty for the built-in default."
+        "description": "Custom Output Version Tag -- Optional additional version label or run identifier appended to all output directories and filenames (e.g. 'v1', 'deliv3', 'exp_test'). OPTIONAL: leave empty for the built-in default.",
+        "default": ""
       },
       "WORK_DIR": {
         "type": "string",

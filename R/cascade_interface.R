@@ -110,8 +110,64 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
   ))
 }
 
-locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir) {
-  # Look in out_dir, W:/cascade_gamble_outputs, and cluster paths (.parquet or .csv)
+locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, downscale_output = "auto") {
+  # 1. If explicit downscale_output folder or file was selected from target folder dropdown
+  if (!is.null(downscale_output) && nzchar(downscale_output) && downscale_output != "auto" && downscale_output != "none") {
+    target_cands <- c(
+      file.path("W:/cascade_gamble_outputs", downscale_output),
+      file.path("/mnt/wdrv/cascade_gamble_outputs", downscale_output),
+      file.path(out_dir, downscale_output),
+      file.path(out_dir, "..", "cascade_gamble_outputs", downscale_output),
+      downscale_output
+    )
+    for (tc in target_cands) {
+      if (dir.exists(tc)) {
+        found <- list.files(tc, pattern = sprintf('.*lu_%s\\.(parquet|csv)$', tolower(scenario)), full.names = TRUE)
+        if (length(found) == 0) found <- list.files(tc, pattern = '.*lu.*\\.(parquet|csv)$', full.names = TRUE)
+        found <- found[!grepl('_luc', found)]
+        if (length(found) > 0) {
+          parquet_f <- found[grepl('\\.parquet$', found, ignore.case = TRUE)]
+          lu_file <- if (length(parquet_f) > 0) parquet_f[1] else found[1]
+          cli_alert_success('Selected explicit downscaling output from target folder: {basename(lu_file)} [{dirname(lu_file)}]')
+          return(list(
+            model       = model,
+            scenario    = scenario,
+            lu_file     = lu_file,
+            lu_parquet  = if (grepl('\\.parquet$', lu_file, ignore.case = TRUE)) lu_file else NULL,
+            lu_csv      = lu_file,
+            out_folder  = dirname(lu_file),
+            source_name = tools::file_path_sans_ext(basename(lu_file))
+          ))
+        }
+      } else if (file.exists(tc)) {
+        cli_alert_success('Selected explicit downscaling output file: {basename(tc)}')
+        return(list(
+          model       = model,
+          scenario    = scenario,
+          lu_file     = tc,
+          lu_parquet  = if (grepl('\\.parquet$', tc, ignore.case = TRUE)) tc else NULL,
+          lu_csv      = tc,
+          out_folder  = dirname(tc),
+          source_name = tools::file_path_sans_ext(basename(tc))
+        ))
+      }
+    }
+    cli_alert_warning('Specified DOWNSCALE_OUTPUT "{downscale_output}" not found in target directories. Falling back to auto-detection.')
+  }
+
+  if (identical(downscale_output, "none")) {
+    return(list(
+      model       = model,
+      scenario    = scenario,
+      lu_file     = NULL,
+      lu_parquet  = NULL,
+      lu_csv      = NULL,
+      out_folder  = out_dir,
+      source_name = toupper(model)
+    ))
+  }
+
+  # 2. Look in out_dir, W:/cascade_gamble_outputs, and cluster paths (.parquet or .csv)
   pat <- sprintf('DS_.*AgMIP_%s_.*_lu.*\\.(parquet|csv)$', toupper(model))
   search_roots <- c(
     out_dir,
@@ -169,7 +225,8 @@ run_act4cap_cascade_downscaling <- function(model,
                                            ncores = 4,
                                            trial = FALSE,
                                            force = FALSE,
-                                           input_file = "",
+                                           input_file = "latest",
+                                           downscale_output = "auto",
                                            run_date = NULL,
                                            version_tag = NULL,
                                            smoke = trial) {
@@ -178,17 +235,17 @@ run_act4cap_cascade_downscaling <- function(model,
   
   # Resolve input file / latest vintage in macro_model folder
   vintage_info <- resolve_macro_model_vintage(
-    input_file = if (is.null(input_file)) "" else input_file,
+    input_file = if (is.null(input_file) || !nzchar(input_file)) "latest" else input_file,
     model = model,
     input_dir = "inputs",
     gamble_dir = gamble_dir
   )
   
-  # 1. Check if existing processed downscaling output already exists (unless force = TRUE)
-  if (!force) {
-    existing <- locate_existing_downscaling(model, scenario, out_dir, gamble_dir)
-    if (!is.null(existing$lu_csv) && file.exists(existing$lu_csv)) {
-      cli_alert_success('Reusing existing downscaled land-use output: {basename(existing$lu_csv)} [FORCE=0]')
+  # 1. Check if existing processed downscaling output already exists (unless force = TRUE or downscale_output == 'none')
+  if (!force && downscale_output != "none") {
+    existing <- locate_existing_downscaling(model, scenario, out_dir, gamble_dir, downscale_output = downscale_output)
+    if (!is.null(existing$lu_file) && file.exists(existing$lu_file)) {
+      cli_alert_success('Reusing existing downscaled land-use output: {basename(existing$lu_file)} [FORCE=0]')
       existing$input_vintage <- vintage_info
       existing$cached <- TRUE
       return(existing)

@@ -1,7 +1,9 @@
 {
   "TASK": "all",
   "MACRO_MODEL": "globiom",
-  "INPUT_FILE": "",
+  "INPUT_FILE": "latest",
+  "CUSTOM_INPUT_FILE": "",
+  "DOWNSCALE_OUTPUT": "auto",
   "POSTMODELS": "all",
   "SCENARIO": "base",
   "RUN_SWAT": "1",
