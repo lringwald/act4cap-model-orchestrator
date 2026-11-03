@@ -138,32 +138,40 @@ run_act4cap_biodiversity_postprocess <- function(model,
 
   bio_dt <- merge(lu_dt, map_sub, by.x = 'lu', by.y = 'agmip_class', all.x = TRUE)
 
-  # Fallback for any unmapped classes (prefix match or category defaults)
-  unmatched <- which(is.na(bio_dt$agmip_category))
-  if (length(unmatched) > 0) {
-    cli_alert_warning('Found {length(unmatched)} records with unmapped AgMIP land-use codes; applying taxonomic hierarchy fallback.')
-    for (idx in unmatched) {
-      u_lu <- bio_dt$lu[idx]
+  # Fallback for any unmapped classes (vectorized lookup on unique classes)
+  unmatched_classes <- unique(bio_dt$lu[is.na(bio_dt$agmip_category)])
+  if (length(unmatched_classes) > 0) {
+    cli_alert_warning('Found {length(unmatched_classes)} unique unmapped AgMIP land-use codes; applying taxonomic hierarchy fallback.')
+    fallback_dt <- rbindlist(lapply(unmatched_classes, function(u_lu) {
       match_row <- NULL
       for (m_cls in map_sub$agmip_class) {
         if (startsWith(u_lu, m_cls) || startsWith(m_cls, u_lu)) {
-          match_row <- map_sub[agmip_class == m_cls][1]
+          match_row <- copy(map_sub[agmip_class == m_cls][1])
           break
         }
       }
       if (is.null(match_row)) {
-        if (grepl('FOR|PRIM', u_lu)) match_row <- map_sub[agmip_class == 'FOR|PRIM'][1]
-        else if (grepl('FOR', u_lu)) match_row <- map_sub[agmip_class == 'FOR|MAN'][1]
-        else if (grepl('CRP|PRM', u_lu)) match_row <- map_sub[agmip_class == 'CRP|PRM'][1]
-        else if (grepl('CRP|ARA', u_lu)) match_row <- map_sub[agmip_class == 'CRP|ARA'][1]
-        else if (grepl('GRS', u_lu)) match_row <- map_sub[agmip_class == 'GRS'][1]
-        else if (grepl('BUI', u_lu)) match_row <- map_sub[agmip_class == 'BUI'][1]
-        else match_row <- map_sub[agmip_class == 'OLD'][1]
+        if (grepl('FOR|PRIM', u_lu)) match_row <- copy(map_sub[agmip_class == 'FOR|PRIM'][1])
+        else if (grepl('FOR', u_lu)) match_row <- copy(map_sub[agmip_class == 'FOR|MAN'][1])
+        else if (grepl('CRP|PRM', u_lu)) match_row <- copy(map_sub[agmip_class == 'CRP|PRM'][1])
+        else if (grepl('CRP|ARA', u_lu)) match_row <- copy(map_sub[agmip_class == 'CRP|ARA'][1])
+        else if (grepl('GRS', u_lu)) match_row <- copy(map_sub[agmip_class == 'GRS'][1])
+        else if (grepl('BUI', u_lu)) match_row <- copy(map_sub[agmip_class == 'BUI'][1])
+        else match_row <- copy(map_sub[agmip_class == 'OLD'][1])
       }
-      for (col in setdiff(names(match_row), 'agmip_class')) {
-        set(bio_dt, idx, col, match_row[[col]])
-      }
-    }
+      match_row[, agmip_class := u_lu]
+      match_row
+    }))
+
+    bio_dt[fallback_dt, on = .(lu = agmip_class), `:=`(
+      agmip_category = i.agmip_category,
+      lc_type = i.lc_type,
+      lc_btc = i.lc_btc,
+      lc_csar = i.lc_csar,
+      bii_default_coef = i.bii_default_coef,
+      msa_default_coef = i.msa_default_coef,
+      csar_habitat_affinity = i.csar_habitat_affinity
+    )]
   }
 
   bio_dt[, `:=`(

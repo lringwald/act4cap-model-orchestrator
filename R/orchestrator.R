@@ -64,7 +64,9 @@ if (!dir.exists(gamble_dir_resolved)) {
 # Auto-resolve Windows host paths if cluster FUSE mount path was passed
 swat_dir_resolved <- SWATPLUS_DIR
 if (.Platform$OS.type == "windows") {
-  if (!dir.exists(swat_dir_resolved) && dir.exists("swatplus_runs")) {
+  if (dir.exists("W:/swatplus_runs")) {
+    swat_dir_resolved <- "W:/swatplus_runs"
+  } else if (!dir.exists(swat_dir_resolved) && dir.exists("swatplus_runs")) {
     swat_dir_resolved <- "swatplus_runs"
   }
 }
@@ -73,6 +75,8 @@ bio_dir_resolved <- BIODIVERSITY_DIR
 if (!dir.exists(bio_dir_resolved)) {
   if (dir.exists("vendor/Biodiversity_Link")) {
     bio_dir_resolved <- "vendor/Biodiversity_Link"
+  } else if (dir.exists("W:/enriched_with_bii")) {
+    bio_dir_resolved <- "W:/enriched_with_bii"
   }
 }
 
@@ -120,7 +124,17 @@ cli_alert_info('Force Re-run:      {fifelse(FORCE, "YES (Recomputing & overwriti
 cli_alert_info('Allocated Cores:   {NCORES}')
 
 work_dir_resolved <- WORK_DIR
-if (startsWith(work_dir_resolved, "/mnt") && .Platform$OS.type == "windows") {
+if (startsWith(work_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows") {
+  mapped_w <- sub("^/mnt/wdrv/?", "W:/", work_dir_resolved)
+  if (!dir.exists(mapped_w)) tryCatch(dir.create(mapped_w, recursive = TRUE), error = function(e) NULL)
+  if (dir.exists(mapped_w)) {
+    cli_alert_success("Windows host detected: mapped cluster mount {WORK_DIR} to accelerator drive {mapped_w}")
+    work_dir_resolved <- mapped_w
+  } else {
+    cli_alert_info("Windows host detected with cluster mount path {WORK_DIR}. Using local workspace outputs.")
+    work_dir_resolved <- "."
+  }
+} else if (startsWith(work_dir_resolved, "/mnt") && .Platform$OS.type == "windows") {
   cli_alert_info("Windows host detected with cluster mount path {WORK_DIR}. Using local workspace outputs.")
   work_dir_resolved <- "."
 } else if (!dir.exists(work_dir_resolved)) {

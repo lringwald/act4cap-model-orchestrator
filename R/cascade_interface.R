@@ -30,6 +30,11 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
     cands <- c(
       file.path(input_dir, model, input_file),
       file.path(input_dir, input_file),
+      file.path("W:/model_outputs", model, input_file),
+      file.path("W:/model_outputs/merged", input_file),
+      file.path("W:/model_outputs", input_file),
+      file.path("/mnt/wdrv/model_outputs", model, input_file),
+      file.path("/mnt/wdrv/model_outputs/merged", input_file),
       file.path("/mnt/pdrv/globiom/Projects/DS_AgMIP/AgMIP_output", input_file),
       if (!is.null(gamble_dir)) file.path(gamble_dir, "data", "macro_models", input_file),
       if (!is.null(gamble_dir)) file.path(gamble_dir, "data", input_file)
@@ -57,6 +62,11 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
   search_dirs <- c(
     file.path(input_dir, model),
     input_dir,
+    "W:/model_outputs/merged",
+    file.path("W:/model_outputs", model),
+    "W:/model_outputs",
+    "/mnt/wdrv/model_outputs/merged",
+    file.path("/mnt/wdrv/model_outputs", model),
     if (!is.null(gamble_dir)) file.path(gamble_dir, "data", "macro_models", model),
     if (!is.null(gamble_dir)) file.path(gamble_dir, "data", "macro_models"),
     if (!is.null(gamble_dir)) file.path(gamble_dir, "data"),
@@ -109,16 +119,27 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
 }
 
 locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir) {
-  # Look in out_dir first, then gamble_dir default outputs
+  # Look in out_dir, W:/cascade_gamble_outputs, and cluster paths
   pat <- sprintf('DS_.*AgMIP_%s_.*_lu.*\\.csv$', toupper(model))
-  cands <- list.files(out_dir, pattern = pat, recursive = TRUE, full.names = TRUE)
+  search_roots <- c(
+    out_dir,
+    "W:/cascade_gamble_outputs",
+    "/mnt/wdrv/cascade_gamble_outputs",
+    file.path(out_dir, "..", "cascade_gamble_outputs")
+  )
+  search_roots <- search_roots[dir.exists(search_roots)]
+  cands <- character(0)
+  for (sr in search_roots) {
+    found <- list.files(sr, pattern = pat, recursive = TRUE, full.names = TRUE)
+    cands <- c(cands, found)
+  }
   if (length(cands) == 0 && file.exists('/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs')) {
     cands <- list.files('/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs', pattern = pat, recursive = TRUE, full.names = TRUE)
   }
   cands <- cands[!grepl('_luc', cands)]
   if (length(cands) > 0) {
     lu_file <- sort(cands, decreasing = TRUE)[1]
-    cli_alert_success('Located downscaled land-use file: {basename(lu_file)}')
+    cli_alert_success('Located downscaled land-use file: {basename(lu_file)} [{dirname(lu_file)}]')
     return(list(model = model, scenario = scenario, lu_csv = lu_file, out_folder = dirname(lu_file)))
   }
   cli_alert_warning('No existing downscaled land-use file found for {toupper(model)}. Will mock / generate minimal structure.')
