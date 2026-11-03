@@ -161,7 +161,7 @@ synthesize_act4cap_results <- function(model,
       ),
       water_quality = list(
         summary_csv   = swat_res$summary_csv,
-        cells_csv     = swat_res$cell_csv,
+        cells_parquet = if (!is.null(swat_res$cell_parquet)) swat_res$cell_parquet else swat_res$cell_csv,
         composite_rds = swat_res$composite_rds,
         rasters_count = length(swat_res$rasters)
       ),
@@ -169,12 +169,12 @@ synthesize_act4cap_results <- function(model,
         bii_csv       = bio_res$bii_csv,
         csar_csv      = bio_res$csar_csv,
         msa_csv       = bio_res$summary_csv,
-        cells_csv     = bio_res$cell_csv,
+        cells_parquet = if (!is.null(bio_res$cell_parquet)) bio_res$cell_parquet else bio_res$cell_csv,
         composite_rds = bio_res$composite_rds,
         rasters_count = length(bio_res$rasters)
       ),
       downscaling = list(
-        lu_csv = downscale_res$lu_csv
+        lu_file       = if (!is.null(downscale_res$lu_parquet)) downscale_res$lu_parquet else downscale_res$lu_file
       )
     )
   )

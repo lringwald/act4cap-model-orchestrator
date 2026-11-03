@@ -64,11 +64,11 @@ run_act4cap_swat_postprocess <- function(model,
     out_dir = out_dir
   )
 
-  swat_out_dir    <- fn$swat$dir_path
-  out_csv         <- fn$swat$summary_csv
-  composite_rds   <- fn$swat$composite_rds
-  target_cell_csv <- fn$swat$cell_csv
-  raster_prefix   <- fn$swat$raster_prefix
+  swat_out_dir        <- fn$swat$dir_path
+  out_csv             <- fn$swat$summary_csv
+  composite_rds       <- fn$swat$composite_rds
+  target_cell_parquet <- fn$swat$cell_parquet
+  raster_prefix       <- fn$swat$raster_prefix
 
   # Check if output already exists (unless force = TRUE)
   if (!force && file.exists(out_csv)) {
@@ -78,7 +78,8 @@ run_act4cap_swat_postprocess <- function(model,
       model         = model,
       scenario      = scenario,
       summary_csv   = out_csv,
-      cell_csv      = if (file.exists(target_cell_csv)) target_cell_csv else NULL,
+      cell_parquet  = if (file.exists(target_cell_parquet)) target_cell_parquet else NULL,
+      cell_csv      = if (file.exists(target_cell_parquet)) target_cell_parquet else NULL,
       composite_rds = composite_rds,
       swat_dir      = swat_out_dir,
       tag           = fn$tag,
@@ -101,8 +102,15 @@ run_act4cap_swat_postprocess <- function(model,
     cli_alert_info('SWAT+ external toolkit directory not mounted. Executing calibrated hydrological catchment model.')
   }
 
-  # 2. Check downscaled land-use input table
-  lu_file <- downscale_outputs$lu_csv
+  # 2. Check downscaled land-use input table (.parquet or .csv)
+  lu_file <- if (!is.null(downscale_outputs$lu_parquet) && file.exists(downscale_outputs$lu_parquet)) {
+    downscale_outputs$lu_parquet
+  } else if (!is.null(downscale_outputs$lu_file) && file.exists(downscale_outputs$lu_file)) {
+    downscale_outputs$lu_file
+  } else {
+    downscale_outputs$lu_csv
+  }
+
   if (is.null(lu_file) || !file.exists(lu_file)) {
     cli_alert_warning('No valid downscaled land use table provided for SWAT+. Generating regional baseline.')
     lu_dt <- data.table(
@@ -113,7 +121,7 @@ run_act4cap_swat_postprocess <- function(model,
       crp_area_km2 = rep(c(40.0, 30.0, 30.0), times = 5)
     )
   } else {
-    lu_dt <- fread(lu_file, nrows = fifelse(is_trial, 2000L, Inf))
+    lu_dt <- read_cell_tabular_data(lu_file, nrows = fifelse(is_trial, 2000L, Inf))
     for (col in c('times', 'time')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'year', skip_absent = TRUE)
     for (col in c('value', 'area_km2', 'area')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'crp_area_km2', skip_absent = TRUE)
   }
@@ -187,8 +195,8 @@ run_act4cap_swat_postprocess <- function(model,
 
   fwrite(swat_summary, out_csv)
 
-  # 5. Spatially explicit cell-level export (CSV & GeoTIFF rasters)
-  cell_csv <- NULL
+  # 5. Spatially explicit cell-level export (Parquet & GeoTIFF rasters)
+  cell_parquet <- NULL
   tifs <- character(0)
   if ('ns' %in% names(hru_dt)) {
     cell_swat <- hru_dt[, .(
@@ -200,9 +208,9 @@ run_act4cap_swat_postprocess <- function(model,
       water_yield_mm   = round(weighted.mean(water_yield_mm, crp_area_km2, na.rm = TRUE), 2)
     ), by = .(ns, Ns_reg, year)]
 
-    cell_csv <- target_cell_csv
-    fwrite(cell_swat, cell_csv)
-    cli_alert_success('Saved spatially explicit cell-level summary: {basename(cell_csv)}')
+    cell_parquet <- target_cell_parquet
+    write_cell_tabular_data(cell_swat, cell_parquet)
+    cli_alert_success('Saved spatially explicit cell-level parquet: {basename(cell_parquet)}')
 
     tifs <- tryCatch(
       export_indicators_to_geotiff(
@@ -245,7 +253,8 @@ run_act4cap_swat_postprocess <- function(model,
     model         = model,
     scenario      = scenario,
     summary_csv   = out_csv,
-    cell_csv      = cell_csv,
+    cell_parquet  = cell_parquet,
+    cell_csv      = cell_parquet, # backwards compatible alias
     rasters       = tifs,
     composite_rds = composite_rds,
     swat_dir      = swat_out_dir,

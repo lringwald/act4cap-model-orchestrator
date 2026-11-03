@@ -75,6 +75,24 @@ flowchart TD
 4. **Multi-Pillar Synthesis (`postprocess` / `all`)**:
    - Merges SWAT+ catchment metrics and Biodiversity Link indicators into a unified multi-pillar indicator CSV dataset: `act4cap_integrated_synthesis_<tag>.csv`.
 
+## Output Storage Format Standard
+
+To balance cross-software human accessibility with big-data performance and disk efficiency:
+- **Regional / Policy Aggregates (`.csv`)**:
+  - Regional summaries aggregated by NUTS2 / country code (`Ns_reg`) and simulation year (`year`) are stored as standard CSV files (`.csv`).
+  - These files are compact (~100–300 rows) and directly openable in spreadsheet applications (Excel, LibreOffice) and business intelligence tools.
+  - Examples: `swat_plus_water_quality_summary_<tag>.csv`, `biodiversity_link_bii_summary_<tag>.csv`, `biodiversity_link_csar_summary_<tag>.csv`, `biodiversity_link_msa_summary_<tag>.csv`, and `act4cap_integrated_synthesis_<tag>.csv`.
+- **Pixel / Cell-Level Spatial Tables (`.parquet`)**:
+  - Cell-level spatial tables containing 10km grid cell identifiers (`ns`), NUTS units, and detailed biophysical/hydrological/ecological indicators strictly enforce the **Apache Parquet standard** (`.parquet`) with Snappy compression via the `arrow` engine.
+  - Parquet reduces file sizes by ~80% compared to uncompressed CSVs, preserves strict column datatypes, and accelerates loading into R/Python by ~10x.
+  - Examples: `swat_plus_cells_<tag>.parquet`, `biodiversity_link_cells_<tag>.parquet`, and mediated land-use allocations `DS_ACT4CAP_AgMIP_<tag>_lu_<scenario>.parquet`.
+- **Spatial Continuous Grids (`.tif`)**:
+  - Standard European GeoTIFF rasters (`EPSG:3035`) with LZW compression for direct GIS inspection (QGIS, ArcGIS).
+- **In-Memory Bundles (`.rds`)**:
+  - Full R composite objects containing tabular summaries, raster paths, and run provenance metadata.
+- **Run Manifests (`.json`)**:
+  - Self-describing execution metadata and artifact inventories.
+
 ## Standardized Output Versioning & File Naming
 
 All output directories, tabular CSVs, RDS composites, and GeoTIFF rasters encode a standardized, reproducible multi-tier version label (`<tag>`):
@@ -102,8 +120,8 @@ outputs/
 │   │   └── act4cap_integrated_synthesis_<tag>.csv
 │   │
 │   ├── water_quality/                                     # SWAT+ hydrological and nutrient outputs
-│   │   ├── swat_plus_water_quality_summary_<tag>.csv
-│   │   ├── swat_plus_cells_<tag>.csv
+│   │   ├── swat_plus_water_quality_summary_<tag>.csv      # Regional NUTS summary (.csv)
+│   │   ├── swat_plus_cells_<tag>.parquet                  # 10km grid cell metrics (.parquet)
 │   │   ├── swat_plus_composite_<tag>.rds
 │   │   └── rasters/                                       # Spatially explicit GeoTIFFs (EPSG:3035)
 │   │       ├── swat_<tag>_n_leach_kg_ha_<year>.tif
@@ -112,10 +130,10 @@ outputs/
 │   │       └── swat_<tag>_water_yield_mm_<year>.tif
 │   │
 │   ├── biodiversity/                                      # Biodiversity Link ecological outputs
-│   │   ├── biodiversity_link_bii_summary_<tag>.csv
-│   │   ├── biodiversity_link_csar_summary_<tag>.csv
-│   │   ├── biodiversity_link_msa_summary_<tag>.csv
-│   │   ├── biodiversity_link_cells_<tag>.csv
+│   │   ├── biodiversity_link_bii_summary_<tag>.csv        # Regional BII summary (.csv)
+│   │   ├── biodiversity_link_csar_summary_<tag>.csv       # Regional cSAR summary (.csv)
+│   │   ├── biodiversity_link_msa_summary_<tag>.csv        # Regional MSA summary (.csv)
+│   │   ├── biodiversity_link_cells_<tag>.parquet          # 10km grid cell metrics (.parquet)
 │   │   ├── biodiversity_link_composite_<tag>.rds
 │   │   └── rasters/                                       # Spatially explicit GeoTIFFs (EPSG:3035)
 │   │       ├── biodiversity_<tag>_bii_score_<year>.tif
@@ -123,7 +141,7 @@ outputs/
 │   │       └── biodiversity_<tag>_msa_score_<year>.tif
 │   │
 │   └── downscaling/                                       # Mediated 10km AgMIP land use & allocation
-│       └── DS_ACT4CAP_AgMIP_<tag>_lu_<scenario>.csv
+│       └── DS_ACT4CAP_AgMIP_<tag>_lu_<scenario>.parquet   # 10km land use (.parquet)
 │
 └── synthesis/                                             # Central index of all scenario syntheses
     └── act4cap_integrated_synthesis_<tag>.csv

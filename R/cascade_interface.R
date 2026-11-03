@@ -111,8 +111,8 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
 }
 
 locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir) {
-  # Look in out_dir, W:/cascade_gamble_outputs, and cluster paths
-  pat <- sprintf('DS_.*AgMIP_%s_.*_lu.*\\.csv$', toupper(model))
+  # Look in out_dir, W:/cascade_gamble_outputs, and cluster paths (.parquet or .csv)
+  pat <- sprintf('DS_.*AgMIP_%s_.*_lu.*\\.(parquet|csv)$', toupper(model))
   search_roots <- c(
     out_dir,
     "W:/cascade_gamble_outputs",
@@ -130,22 +130,32 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir) {
   }
   cands <- cands[!grepl('_luc', cands)]
   if (length(cands) > 0) {
-    lu_file <- sort(cands, decreasing = TRUE)[1]
+    # Prioritize .parquet over .csv if available
+    parquet_cands <- cands[grepl('\\.parquet$', cands, ignore.case = TRUE)]
+    lu_file <- if (length(parquet_cands) > 0) {
+      sort(parquet_cands, decreasing = TRUE)[1]
+    } else {
+      sort(cands, decreasing = TRUE)[1]
+    }
     cli_alert_success('Located downscaled land-use file: {basename(lu_file)} [{dirname(lu_file)}]')
     return(list(
-      model = model,
-      scenario = scenario,
-      lu_csv = lu_file,
-      out_folder = dirname(lu_file),
+      model       = model,
+      scenario    = scenario,
+      lu_file     = lu_file,
+      lu_parquet  = if (grepl('\\.parquet$', lu_file, ignore.case = TRUE)) lu_file else NULL,
+      lu_csv      = lu_file, # backward compatible alias
+      out_folder  = dirname(lu_file),
       source_name = tools::file_path_sans_ext(basename(lu_file))
     ))
   }
   cli_alert_warning('No existing downscaled land-use file found for {toupper(model)}. Will mock / generate minimal structure.')
   return(list(
-    model = model,
-    scenario = scenario,
-    lu_csv = NULL,
-    out_folder = out_dir,
+    model       = model,
+    scenario    = scenario,
+    lu_file     = NULL,
+    lu_parquet  = NULL,
+    lu_csv      = NULL,
+    out_folder  = out_dir,
     source_name = toupper(model)
   ))
 }
@@ -202,7 +212,7 @@ run_act4cap_cascade_downscaling <- function(model,
     return(locate_existing_downscaling(model, scenario, out_dir, gamble_dir))
   }
   
-  # 3. In trial mode, generate standardized lightweight test slice
+  # 3. In trial mode, generate standardized lightweight test slice (.parquet standard)
   if (is_trial) {
     tag <- construct_version_tag(
       model = model,
@@ -213,19 +223,21 @@ run_act4cap_cascade_downscaling <- function(model,
       trial = TRUE,
       custom_tag = version_tag
     )
-    trial_dir <- file.path(out_dir, tag, 'downscaling')
-    trial_csv <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_lu_%s.csv', tag, tolower(scenario)))
+    trial_dir     <- file.path(out_dir, tag, 'downscaling')
+    trial_parquet <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_lu_%s.parquet', tag, tolower(scenario)))
     
-    if (!force && file.exists(trial_csv)) {
-      cli_alert_success('Reusing existing trial downscaling test file: {basename(trial_csv)} [FORCE=0]')
+    if (!force && file.exists(trial_parquet)) {
+      cli_alert_success('Reusing existing trial downscaling test parquet: {basename(trial_parquet)} [FORCE=0]')
       return(list(
-        model = model,
-        scenario = scenario,
-        lu_csv = trial_csv,
-        out_folder = trial_dir,
-        source_name = tag,
+        model         = model,
+        scenario      = scenario,
+        lu_file       = trial_parquet,
+        lu_parquet    = trial_parquet,
+        lu_csv        = trial_parquet,
+        out_folder    = trial_dir,
+        source_name   = tag,
         input_vintage = vintage_info,
-        cached = TRUE
+        cached        = TRUE
       ))
     }
     
@@ -239,16 +251,18 @@ run_act4cap_cascade_downscaling <- function(model,
       lu = c('CRP|ARA|WHT', 'FOR|MAN', 'CRP|ARA|WHT', 'FOR|MAN', 'CRP|ARA', 'FOR|PRIM'),
       crp_area_km2 = c(45.5, 30.2, 50.0, 28.1, 60.0, 40.0)
     )
-    fwrite(trial_dt, trial_csv)
-    cli_alert_success('Created trial downscaling test file: {basename(trial_csv)}')
+    write_cell_tabular_data(trial_dt, trial_parquet)
+    cli_alert_success('Created trial downscaling test parquet: {basename(trial_parquet)}')
     return(list(
-      model = model,
-      scenario = scenario,
-      lu_csv = trial_csv,
-      out_folder = trial_dir,
-      source_name = tag,
+      model         = model,
+      scenario      = scenario,
+      lu_file       = trial_parquet,
+      lu_parquet    = trial_parquet,
+      lu_csv        = trial_parquet,
+      out_folder    = trial_dir,
+      source_name   = tag,
       input_vintage = vintage_info,
-      cached = FALSE
+      cached        = FALSE
     ))
   }
   

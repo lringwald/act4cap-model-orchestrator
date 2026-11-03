@@ -4,23 +4,20 @@
 # Generates uniform, reproducible version labels across all Act4Cap outputs:
 #   <model>_<scenario>_<macro_output_name>_<resolution>_<date>[_<custom_tag>][_TRIAL]
 #
-# Encodes:
-#   1. Macro Economic Model (e.g. globiom, capri, image, magnet, clumondo)
-#   2. Scenario (e.g. base, ndc, ssp2)
-#   3. Macro Model Output Name / Vintage (e.g. 20260916_compr_scens_merge)
-#   4. Downscaling Resolution (e.g. 10km, 5km, 2km)
-#   5. Date Stamp (YYYYMMDD, e.g. 20261103)
-#   6. Optional Custom Version Tag (e.g. v1, deliv3)
-#   7. Trial Mode Tag (_TRIAL when trial = TRUE / TRIAL = 1)
+# Storage Standard:
+#   - Regional / Aggregated Summaries: .csv (human-readable, spreadsheet-accessible)
+#   - Pixel / Cell-Level Spatial Tables: .parquet (high-throughput, snappy-compressed)
+#   - Spatial Grids: .tif (EPSG:3035 GeoTIFF rasters)
+#   - In-memory State / Metadata Bundles: .rds
 #
 # Unified Hierarchical Output Architecture:
 #   outputs/<tag>/
-#     ├── water_quality/   (SWAT+ summary, cells, composite, rasters/)
-#     ├── biodiversity/    (BII, cSAR, MSA summary, cells, composite, rasters/)
-#     ├── synthesis/       (Unified multi-pillar summary, manifest.json)
-#     └── downscaling/     (Mediated 10km land use & fertilizer)
+#     ├── water_quality/   (regional summary .csv, 10km cells .parquet, composite .rds, rasters/)
+#     ├── biodiversity/    (BII/cSAR/MSA summaries .csv, 10km cells .parquet, composite .rds, rasters/)
+#     ├── synthesis/       (unified multi-pillar summary .csv, manifest.json)
+#     └── downscaling/     (mediated 10km land use .parquet)
 #
-#   outputs/synthesis/     (Central index containing all scenario syntheses)
+#   outputs/synthesis/     (central index containing all scenario syntheses .csv)
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -48,7 +45,7 @@ extract_macro_output_stem <- function(macro_output = NULL, downscale_csv = NULL,
     if (nzchar(tok)) return(tok)
   }
   
-  # 2. Check downscale_csv file name if available
+  # 2. Check downscale file name if available
   if (!is.null(downscale_csv) && nzchar(downscale_csv)) {
     base <- basename(downscale_csv)
     # If standard DS_ACT4CAP_AgMIP_<MODEL>_<RES>_<DATE> format, extract informative core
@@ -112,6 +109,30 @@ construct_version_tag <- function(model,
   tag
 }
 
+# --- IO helpers enforcing standard file formats -------------------------------
+write_cell_tabular_data <- function(dt, parquet_path) {
+  dir.create(dirname(parquet_path), recursive = TRUE, showWarnings = FALSE)
+  if (requireNamespace("arrow", quietly = TRUE)) {
+    arrow::write_parquet(as.data.frame(dt), parquet_path, compression = "snappy")
+    return(parquet_path)
+  }
+  # Fallback to CSV if arrow is unavailable
+  csv_path <- sub("\\.parquet$", ".csv", parquet_path)
+  data.table::fwrite(dt, csv_path)
+  csv_path
+}
+
+read_cell_tabular_data <- function(file_path, nrows = Inf) {
+  if (grepl("\\.parquet$", file_path, ignore.case = TRUE)) {
+    if (requireNamespace("arrow", quietly = TRUE)) {
+      dt <- data.table::as.data.table(arrow::read_parquet(file_path))
+      if (is.finite(nrows) && nrows < nrow(dt)) dt <- dt[seq_len(nrows)]
+      return(dt)
+    }
+  }
+  data.table::fread(file_path, nrows = nrows)
+}
+
 construct_act4cap_output_filenames <- function(model,
                                                scenario,
                                                macro_output = NULL,
@@ -144,40 +165,55 @@ construct_act4cap_output_filenames <- function(model,
   # Central cross-model synthesis directory
   central_synth_dir <- file.path(out_dir, "synthesis")
   
+  # Pixel-level tabular files enforce .parquet standard
+  swat_cell_parquet <- file.path(swat_out_dir, sprintf("swat_plus_cells_%s.parquet", tag))
+  bio_cell_parquet  <- file.path(bio_out_dir, sprintf("biodiversity_link_cells_%s.parquet", tag))
+  downscale_parquet <- file.path(downscale_dir, sprintf("DS_ACT4CAP_AgMIP_%s_lu_%s.parquet", tag, tolower(scenario)))
+  
   list(
     tag     = tag,
     job_dir = job_dir,
     
-    # Downscaling
+    # Downscaling (Spatial Mediation)
     downscaling = list(
-      dir_name = "downscaling",
-      dir_path = downscale_dir,
-      lu_csv   = file.path(downscale_dir, sprintf("DS_ACT4CAP_AgMIP_%s_lu_%s.csv", tag, tolower(scenario)))
+      dir_name    = "downscaling",
+      dir_path    = downscale_dir,
+      lu_parquet  = downscale_parquet,
+      lu_file     = downscale_parquet,
+      lu_csv      = file.path(downscale_dir, sprintf("DS_ACT4CAP_AgMIP_%s_lu_%s.csv", tag, tolower(scenario)))
     ),
     
     # SWAT+ Water Quality
+    # Regional summary: .csv
+    # Pixel / cell-level table: .parquet
     swat = list(
       dir_name      = "water_quality",
       dir_path      = swat_out_dir,
       summary_csv   = file.path(swat_out_dir, sprintf("swat_plus_water_quality_summary_%s.csv", tag)),
-      cell_csv      = file.path(swat_out_dir, sprintf("swat_plus_cells_%s.csv", tag)),
+      cell_parquet  = swat_cell_parquet,
+      cell_file     = swat_cell_parquet,
+      cell_csv      = swat_cell_parquet, # backwards compatible alias
       composite_rds = file.path(swat_out_dir, sprintf("swat_plus_composite_%s.rds", tag)),
       raster_prefix = sprintf("swat_%s", tag)
     ),
     
     # Biodiversity Link
+    # Regional summaries: .csv
+    # Pixel / cell-level table: .parquet
     biodiversity = list(
       dir_name      = "biodiversity",
       dir_path      = bio_out_dir,
       bii_csv       = file.path(bio_out_dir, sprintf("biodiversity_link_bii_summary_%s.csv", tag)),
       csar_csv      = file.path(bio_out_dir, sprintf("biodiversity_link_csar_summary_%s.csv", tag)),
       msa_csv       = file.path(bio_out_dir, sprintf("biodiversity_link_msa_summary_%s.csv", tag)),
-      cell_csv      = file.path(bio_out_dir, sprintf("biodiversity_link_cells_%s.csv", tag)),
+      cell_parquet  = bio_cell_parquet,
+      cell_file     = bio_cell_parquet,
+      cell_csv      = bio_cell_parquet, # backwards compatible alias
       composite_rds = file.path(bio_out_dir, sprintf("biodiversity_link_composite_%s.rds", tag)),
       raster_prefix = sprintf("biodiversity_%s", tag)
     ),
     
-    # Multi-Pillar Synthesis
+    # Multi-Pillar Synthesis (Regional executive index: .csv)
     synthesis = list(
       dir_name         = "synthesis",
       dir_path         = synth_out_dir,

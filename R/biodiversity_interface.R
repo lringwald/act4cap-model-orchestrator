@@ -114,13 +114,13 @@ run_act4cap_biodiversity_postprocess <- function(model,
     out_dir = out_dir
   )
 
-  bio_out_dir     <- fn$biodiversity$dir_path
-  bii_csv         <- fn$biodiversity$bii_csv
-  csar_csv        <- fn$biodiversity$csar_csv
-  msa_csv         <- fn$biodiversity$msa_csv
-  composite_rds   <- fn$biodiversity$composite_rds
-  target_cell_csv <- fn$biodiversity$cell_csv
-  raster_prefix   <- fn$biodiversity$raster_prefix
+  bio_out_dir         <- fn$biodiversity$dir_path
+  bii_csv             <- fn$biodiversity$bii_csv
+  csar_csv            <- fn$biodiversity$csar_csv
+  msa_csv             <- fn$biodiversity$msa_csv
+  composite_rds       <- fn$biodiversity$composite_rds
+  target_cell_parquet <- fn$biodiversity$cell_parquet
+  raster_prefix       <- fn$biodiversity$raster_prefix
 
   # Check if outputs already exist (unless force = TRUE)
   if (!force && file.exists(bii_csv) && file.exists(csar_csv) && file.exists(msa_csv)) {
@@ -132,7 +132,8 @@ run_act4cap_biodiversity_postprocess <- function(model,
       summary_csv    = msa_csv,
       bii_csv        = bii_csv,
       csar_csv       = csar_csv,
-      cell_csv       = if (file.exists(target_cell_csv)) target_cell_csv else NULL,
+      cell_parquet   = if (file.exists(target_cell_parquet)) target_cell_parquet else NULL,
+      cell_csv       = if (file.exists(target_cell_parquet)) target_cell_parquet else NULL,
       composite_rds  = composite_rds,
       bio_dir        = bio_out_dir,
       tag            = fn$tag,
@@ -142,8 +143,15 @@ run_act4cap_biodiversity_postprocess <- function(model,
 
   if (!dir.exists(bio_out_dir)) dir.create(bio_out_dir, recursive = TRUE)
 
-  # 1. Load downscaled spatial land-use data
-  lu_file <- downscale_outputs$lu_csv
+  # 1. Load downscaled spatial land-use data (.parquet or .csv)
+  lu_file <- if (!is.null(downscale_outputs$lu_parquet) && file.exists(downscale_outputs$lu_parquet)) {
+    downscale_outputs$lu_parquet
+  } else if (!is.null(downscale_outputs$lu_file) && file.exists(downscale_outputs$lu_file)) {
+    downscale_outputs$lu_file
+  } else {
+    downscale_outputs$lu_csv
+  }
+
   if (is.null(lu_file) || !file.exists(lu_file)) {
     cli_alert_warning('No valid downscaled land use table provided. Using standard regional baseline.')
     lu_dt <- data.table(
@@ -154,7 +162,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
       crp_area_km2 = rep(c(40.0, 30.0, 30.0), times = 5)
     )
   } else {
-    lu_dt <- fread(lu_file, nrows = fifelse(is_trial, 2000L, Inf))
+    lu_dt <- read_cell_tabular_data(lu_file, nrows = fifelse(is_trial, 2000L, Inf))
     for (col in c('times', 'time')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'year', skip_absent = TRUE)
     for (col in c('value', 'area_km2', 'area')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'crp_area_km2', skip_absent = TRUE)
   }
@@ -257,9 +265,9 @@ run_act4cap_biodiversity_postprocess <- function(model,
       msa_score           = round(weighted.mean(msa_lu_coef, crp_area_km2, na.rm = TRUE), 4)
     ), by = .(ns, Ns_reg, year)]
 
-    cell_csv <- target_cell_csv
-    fwrite(cell_bii, cell_csv)
-    cli_alert_success('Saved spatially explicit cell-level summary: {basename(cell_csv)}')
+    cell_parquet <- target_cell_parquet
+    write_cell_tabular_data(cell_bii, cell_parquet)
+    cli_alert_success('Saved spatially explicit cell-level parquet: {basename(cell_parquet)}')
 
     tifs <- tryCatch(
       export_indicators_to_geotiff(
@@ -312,7 +320,8 @@ run_act4cap_biodiversity_postprocess <- function(model,
     summary_csv    = msa_csv,
     bii_csv        = bii_csv,
     csar_csv       = csar_csv,
-    cell_csv       = cell_csv,
+    cell_parquet   = cell_parquet,
+    cell_csv       = cell_parquet, # backwards compatible alias
     rasters        = tifs,
     composite_rds  = composite_rds,
     bio_dir        = bio_out_dir,
