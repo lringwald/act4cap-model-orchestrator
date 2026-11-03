@@ -213,8 +213,8 @@ run_act4cap_cascade_downscaling <- function(model,
       trial = TRUE,
       custom_tag = version_tag
     )
-    trial_dir <- file.path(out_dir, sprintf('DS_ACT4CAP_AgMIP_%s_%s_TRIAL', toupper(model), resolution))
-    trial_csv <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_lu_%s.csv', tag, scenario))
+    trial_dir <- file.path(out_dir, tag, 'downscaling')
+    trial_csv <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_lu_%s.csv', tag, tolower(scenario)))
     
     if (!force && file.exists(trial_csv)) {
       cli_alert_success('Reusing existing trial downscaling test file: {basename(trial_csv)} [FORCE=0]')

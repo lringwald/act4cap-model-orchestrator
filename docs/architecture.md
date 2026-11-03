@@ -89,21 +89,44 @@ $$\text{tag} = \langle\text{model}\rangle\_\langle\text{scenario}\rangle\_\langl
 5. **Custom Version Tag**: Optional user identifier appended via `VERSION_TAG` (e.g. `v1`, `deliv3`).
 6. **Trial Mode Indicator**: Appended as `_TRIAL` whenever `TRIAL=1` or `TASK=trial` is active.
 
-### Example Outputs:
-- **SWAT+ Directory**: `swat_water_quality_globiom_base_20260916_compr_scens_merge_10km_20261103/`
-  - `swat_plus_water_quality_summary_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
-  - `swat_plus_cells_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
-  - `swat_plus_composite_globiom_base_20260916_compr_scens_merge_10km_20261103.rds`
-  - `rasters/swat_globiom_base_20260916_compr_scens_merge_10km_20261103_n_leach_kg_ha_2020.tif`
-- **Biodiversity Link Directory**: `biodiversity_link_globiom_base_20260916_compr_scens_merge_10km_20261103/`
-  - `biodiversity_link_bii_summary_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
-  - `biodiversity_link_csar_summary_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
-  - `biodiversity_link_msa_summary_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
-  - `biodiversity_link_cells_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
-  - `biodiversity_link_composite_globiom_base_20260916_compr_scens_merge_10km_20261103.rds`
-  - `rasters/biodiversity_globiom_base_20260916_compr_scens_merge_10km_20261103_bii_score_2020.tif`
-- **Integrated Synthesis**:
-  - `act4cap_synthesis/act4cap_integrated_synthesis_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
+### Unified Job Directory Structure
+
+All analytical outputs for a given run are unified into a self-contained, reproducible job folder (`outputs/<tag>/`), supplemented by a top-level synthesis index:
+
+```
+outputs/
+├── <tag>/                                                 # e.g. globiom_base_20260916_compr_scens_merge_10km_20261103
+│   ├── manifest.json                                      # Run metadata, parameters & artifact inventory
+│   │
+│   ├── synthesis/                                         # Unified cross-pillar outputs
+│   │   └── act4cap_integrated_synthesis_<tag>.csv
+│   │
+│   ├── water_quality/                                     # SWAT+ hydrological and nutrient outputs
+│   │   ├── swat_plus_water_quality_summary_<tag>.csv
+│   │   ├── swat_plus_cells_<tag>.csv
+│   │   ├── swat_plus_composite_<tag>.rds
+│   │   └── rasters/                                       # Spatially explicit GeoTIFFs (EPSG:3035)
+│   │       ├── swat_<tag>_n_leach_kg_ha_<year>.tif
+│   │       ├── swat_<tag>_p_runoff_kg_ha_<year>.tif
+│   │       ├── swat_<tag>_sediment_t_ha_<year>.tif
+│   │       └── swat_<tag>_water_yield_mm_<year>.tif
+│   │
+│   ├── biodiversity/                                      # Biodiversity Link ecological outputs
+│   │   ├── biodiversity_link_bii_summary_<tag>.csv
+│   │   ├── biodiversity_link_csar_summary_<tag>.csv
+│   │   ├── biodiversity_link_msa_summary_<tag>.csv
+│   │   ├── biodiversity_link_cells_<tag>.csv
+│   │   ├── biodiversity_link_composite_<tag>.rds
+│   │   └── rasters/                                       # Spatially explicit GeoTIFFs (EPSG:3035)
+│   │       ├── biodiversity_<tag>_bii_score_<year>.tif
+│   │       ├── biodiversity_<tag>_csar_intactness_<year>.tif
+│   │       └── biodiversity_<tag>_msa_score_<year>.tif
+│   │
+│   └── downscaling/                                       # Mediated 10km AgMIP land use & allocation
+│       └── DS_ACT4CAP_AgMIP_<tag>_lu_<scenario>.csv
+│
+└── synthesis/                                             # Central index of all scenario syntheses
+    └── act4cap_integrated_synthesis_<tag>.csv
 
 ## Accelerator Drive & Cluster Mount Parity
 

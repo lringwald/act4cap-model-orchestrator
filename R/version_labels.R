@@ -12,10 +12,20 @@
 #   5. Date Stamp (YYYYMMDD, e.g. 20261103)
 #   6. Optional Custom Version Tag (e.g. v1, deliv3)
 #   7. Trial Mode Tag (_TRIAL when trial = TRUE / TRIAL = 1)
+#
+# Unified Hierarchical Output Architecture:
+#   outputs/<tag>/
+#     ├── water_quality/   (SWAT+ summary, cells, composite, rasters/)
+#     ├── biodiversity/    (BII, cSAR, MSA summary, cells, composite, rasters/)
+#     ├── synthesis/       (Unified multi-pillar summary, manifest.json)
+#     └── downscaling/     (Mediated 10km land use & fertilizer)
+#
+#   outputs/synthesis/     (Central index containing all scenario syntheses)
 # =============================================================================
 
 suppressPackageStartupMessages({
   library(tools)
+  if (requireNamespace('jsonlite', quietly = TRUE)) library(jsonlite)
 })
 
 clean_token <- function(x) {
@@ -45,7 +55,6 @@ extract_macro_output_stem <- function(macro_output = NULL, downscale_csv = NULL,
     m <- regexec("DS_.*AgMIP_([A-Za-z0-9]+)_([0-9]+km)_([0-9]{8}|TRIAL)", base, ignore.case = TRUE)
     matches <- regmatches(base, m)[[1]]
     if (length(matches) >= 4) {
-      # Return e.g. AgMIP_GLOBIOM_20261001
       return(sprintf("AgMIP_%s_%s", toupper(matches[2]), matches[4]))
     }
     tok <- clean_token(base)
@@ -98,7 +107,6 @@ construct_version_tag <- function(model,
   parts <- parts[nzchar(parts)]
   
   # De-duplicate adjacent identical tokens if macro_stem already contained model/scenario
-  # E.g. globiom_base_globiom_base_... -> globiom_base_...
   tag <- paste(parts, collapse = "_")
   tag <- gsub(sprintf("^%s_%s_%s_%s_", m_str, sc_str, m_str, sc_str), sprintf("%s_%s_", m_str, sc_str), tag)
   tag
@@ -124,24 +132,32 @@ construct_act4cap_output_filenames <- function(model,
     custom_tag = custom_tag
   )
   
-  # SWAT+ paths & files
-  swat_dir_name <- sprintf("swat_water_quality_%s", tag)
-  swat_out_dir  <- file.path(out_dir, swat_dir_name)
+  # Unified Job Directory: outputs/<tag>/
+  job_dir <- file.path(out_dir, tag)
   
-  # Biodiversity Link paths & files
-  bio_dir_name <- sprintf("biodiversity_link_%s", tag)
-  bio_out_dir  <- file.path(out_dir, bio_dir_name)
+  # Subdirectories for each analytical pillar
+  downscale_dir <- file.path(job_dir, "downscaling")
+  swat_out_dir  <- file.path(job_dir, "water_quality")
+  bio_out_dir   <- file.path(job_dir, "biodiversity")
+  synth_out_dir <- file.path(job_dir, "synthesis")
   
-  # Synthesis paths & files
-  synth_dir_name <- "act4cap_synthesis"
-  synth_out_dir  <- file.path(out_dir, synth_dir_name)
+  # Central cross-model synthesis directory
+  central_synth_dir <- file.path(out_dir, "synthesis")
   
   list(
-    tag = tag,
+    tag     = tag,
+    job_dir = job_dir,
     
-    # SWAT+
+    # Downscaling
+    downscaling = list(
+      dir_name = "downscaling",
+      dir_path = downscale_dir,
+      lu_csv   = file.path(downscale_dir, sprintf("DS_ACT4CAP_AgMIP_%s_lu_%s.csv", tag, tolower(scenario)))
+    ),
+    
+    # SWAT+ Water Quality
     swat = list(
-      dir_name      = swat_dir_name,
+      dir_name      = "water_quality",
       dir_path      = swat_out_dir,
       summary_csv   = file.path(swat_out_dir, sprintf("swat_plus_water_quality_summary_%s.csv", tag)),
       cell_csv      = file.path(swat_out_dir, sprintf("swat_plus_cells_%s.csv", tag)),
@@ -151,7 +167,7 @@ construct_act4cap_output_filenames <- function(model,
     
     # Biodiversity Link
     biodiversity = list(
-      dir_name      = bio_dir_name,
+      dir_name      = "biodiversity",
       dir_path      = bio_out_dir,
       bii_csv       = file.path(bio_out_dir, sprintf("biodiversity_link_bii_summary_%s.csv", tag)),
       csar_csv      = file.path(bio_out_dir, sprintf("biodiversity_link_csar_summary_%s.csv", tag)),
@@ -163,10 +179,12 @@ construct_act4cap_output_filenames <- function(model,
     
     # Multi-Pillar Synthesis
     synthesis = list(
-      dir_name = synth_dir_name,
-      dir_path = synth_out_dir,
-      csv      = file.path(synth_out_dir, sprintf("act4cap_integrated_synthesis_%s.csv", tag))
+      dir_name         = "synthesis",
+      dir_path         = synth_out_dir,
+      csv              = file.path(synth_out_dir, sprintf("act4cap_integrated_synthesis_%s.csv", tag)),
+      central_csv      = file.path(central_synth_dir, sprintf("act4cap_integrated_synthesis_%s.csv", tag)),
+      central_dir_path = central_synth_dir,
+      manifest_json    = file.path(job_dir, "manifest.json")
     )
   )
 }
-
