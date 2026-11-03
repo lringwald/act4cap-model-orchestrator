@@ -56,6 +56,7 @@ flowchart TD
    - Translates downscaled land cover and crop fertilizer application into Hydrological Response Units (HRUs).
    - Simulates hydrological water yield (million m³), surface runoff coefficient, soil erosion sediment yield (ktons), and nitrogen/phosphorus leaching (tons) across European river basins.
    - Supports both `tentative` proxy-routing and native cluster simulation (`POSTMODEL_MODE`).
+   - Generates cell-level summaries (`swat_plus_cells_<model>_<scenario>.csv`) and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035, $10\,\text{km}$) for annual water yield, surface runoff, $N$-leaching risk, $P$-runoff risk, and sediment yield.
 
 3. **Biodiversity Link Post-Processor (`biodiversity`)**:
    - Implements the IIASA **Biodiversity_Link** methodology ([GitHub commit `6cc4443f24663622cbbae6f22dce5428bce6b50d`](https://github.com/iiasa/Biodiversity_Link/tree/6cc4443f24663622cbbae6f22dce5428bce6b50d)).
@@ -69,10 +70,17 @@ flowchart TD
      - **Biodiversity Intactness Index (BII)**: Calibrated against IIASA `BII_coefs.RData` and `BTC_LC_MAP.RData` across unmanaged primary forest, managed forest, extensive grassland, permanent bioenergy crops, and arable crops.
      - **Countryside Species-Area Relationship (cSAR16)**: Ecoregional extinction risk and habitat intactness index based on transformed vs. natural habitats.
      - **Mean Species Abundance (MSA)**: Landscape-level mean species abundance.
-   - Generates composite multi-metric RDS artifacts (`mapping_table` embedded) and regional tabular summaries.
+   - Generates cell-level summaries (`biodiversity_link_cells_<model>_<scenario>.csv`), composite multi-metric RDS artifacts (`mapping_table` embedded), regional tabular summaries, and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035, $10\,\text{km}$) for `bii_score`, `csar_intactness`, and `msa_score`.
 
 4. **Multi-Pillar Synthesis (`postprocess` / `all`)**:
    - Merges SWAT+ catchment metrics and Biodiversity Link indicators into a unified multi-pillar indicator CSV dataset: `act4cap_integrated_synthesis_<model>_<scenario>.csv`.
+
+## Accelerator Drive & Cluster Mount Parity
+
+The orchestrator seamlessly handles cross-platform storage paths between Linux cluster deployments (`/mnt/wdrv/act4cap`) and Windows workstation environments (`W:\act4cap`):
+- **Windows Auto-Mapping**: When running on Windows and `WORK_DIR` points to `/mnt/wdrv/act4cap`, the orchestrator transparently maps paths to `W:\act4cap`, writing outputs and accessing shared inputs without path friction.
+- **Pre-computed Macro Model Downscalings**: Located directly in `W:\cascade_gamble_outputs\` (`DS_ACT4CAP_AgMIP_<MODEL>_10km_*_lu_<scenario>.csv`) across CAPRI, CLUMONDO, GLOBIOM, IMAGE, and MAGNET.
+- **Shared SWAT+ & Biodiversity Assets**: Located under `W:\swatplus_runs\` and `W:\enriched_with_bii\`.
 
 ## Input File & Vintage Resolution
 
