@@ -1,32 +1,32 @@
 # =============================================================================
-# R/cascade_interface.R — Cascade Downscaling Interface
+# R/cascade_interface.R — Cascade Interface (gamble-cascade Downscaling)
 # =============================================================================
-# Orchestrates spatial downscaling routines across EU-27 for macro-economic
-# models (GLOBIOM, CAPRI, IMAGE, MAGNET, CLUMONDO) using the Cascade downscaling
-# suite (gamble-cascade / cascadinggamble-core).
-#
-# Upstream repository: https://github.com/lringwald/gamble-cascade
+# Connects the Act4Cap Orchestrator to gamble-cascade / cascadinggamble-core:
+#   1. Resolves macro-economic input vintages (e.g. 20260916_compr_scens_merge.csv)
+#   2. Invokes spatial mediation via run_downscaling.R
+#   3. Generates/Locates mediated 10km land use & fertilizer allocation tables
+#   4. Enforces strict 0% mass & area conservation across administrative units
 # =============================================================================
 suppressPackageStartupMessages({
   library(data.table)
   library(cli)
+  library(tools)
 })
 
-# =============================================================================
-# Helper: Resolve Input Filename or Auto-Detect Latest Vintage in Macro Folder
-# =============================================================================
+if (!exists('construct_version_tag')) {
+  if (file.exists('R/version_labels.R')) source('R/version_labels.R')
+}
+
 resolve_macro_model_vintage <- function(input_file = "", model = "globiom", input_dir = "inputs", gamble_dir = NULL) {
-  # 1. Explicit filename / path provided
-  if (nzchar(input_file) && tolower(input_file) != "latest") {
+  # If an explicit non-empty input_file is given, resolve its path
+  if (!is.null(input_file) && nzchar(input_file) && input_file != "latest") {
     if (file.exists(input_file)) {
-      cli::cli_alert_info("Using explicitly specified macro model input file: {input_file}")
       return(list(
-        path = normalizePath(input_file, winslash = "/", mustWork = FALSE),
+        path = input_file,
         name = basename(input_file),
         source = "explicit_path"
       ))
     }
-    # Search common candidate folders for the bare filename
     cands <- c(
       file.path(input_dir, model, input_file),
       file.path(input_dir, input_file),
@@ -42,23 +42,17 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
     cands <- cands[!is.null(cands)]
     for (cand in cands) {
       if (file.exists(cand)) {
-        cli::cli_alert_info("Resolved explicit macro input filename '{input_file}' to: {cand}")
         return(list(
-          path = normalizePath(cand, winslash = "/", mustWork = FALSE),
+          path = cand,
           name = basename(cand),
-          source = "explicit_resolved"
+          source = "explicit_candidate"
         ))
       }
     }
-    cli::cli_alert_warning("Specified INPUT_FILE '{input_file}' not found locally. Passing through to runtime.")
-    return(list(
-      path = input_file,
-      name = basename(input_file),
-      source = "explicit_passthrough"
-    ))
+    cli_alert_warning('Specified INPUT_FILE {input_file} not found. Attempting automatic detection of latest vintage...')
   }
-  
-  # 2. Auto-detect latest vintage in macro_model folder
+
+  # Automatic detection: scan directories for latest vintage matching macro model
   search_dirs <- c(
     file.path(input_dir, model),
     input_dir,
@@ -70,51 +64,49 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
     if (!is.null(gamble_dir)) file.path(gamble_dir, "data", "macro_models", model),
     if (!is.null(gamble_dir)) file.path(gamble_dir, "data", "macro_models"),
     if (!is.null(gamble_dir)) file.path(gamble_dir, "data"),
-    "/mnt/pdrv/globiom/Projects/DS_AgMIP/AgMIP_output"
+    file.path("/mnt/pdrv/globiom/Projects/DS_AgMIP/AgMIP_output")
   )
-  search_dirs <- unique(search_dirs[!is.null(search_dirs) & dir.exists(search_dirs)])
-  
-  all_files <- character(0)
+  search_dirs <- search_dirs[!is.null(search_dirs) & dir.exists(search_dirs)]
+
+  candidates <- character(0)
   for (sd in search_dirs) {
-    found <- list.files(sd, pattern = "\\.(csv|rds|parquet|gdx)$", full.names = TRUE)
-    all_files <- c(all_files, found)
+    found <- list.files(
+      sd,
+      pattern = sprintf(".*(%s|merge|compr).*\\.(csv|parquet)$", model),
+      full.names = TRUE,
+      ignore.case = TRUE
+    )
+    candidates <- c(candidates, found)
   }
-  all_files <- unique(all_files)
-  
-  if (length(all_files) == 0) {
-    fallback_name <- "20260916_compr_scens_merge.csv"
-    cli::cli_alert_warning("No macro model data files found in search directories. Using default vintage: {fallback_name}")
+
+  if (length(candidates) > 0) {
+    candidates <- unique(candidates)
+    # Extract date prefixes (YYYYMMDD) if present
+    base_names <- basename(candidates)
+    date_matches <- regmatches(base_names, regexpr("^[0-9]{8}", base_names))
+    
+    # Sort candidates by extracted date prefix first, then modification time
+    file_info <- file.info(candidates)
+    file_info$date_prefix <- NA_character_
+    has_date <- grepl("^[0-9]{8}", rownames(file_info)) | grepl("^[0-9]{8}", base_names)
+    file_info$date_prefix[has_date] <- substr(base_names[has_date], 1, 8)
+    
+    # Order by date_prefix desc, then mtime desc
+    ord <- order(file_info$date_prefix, file_info$mtime, decreasing = TRUE, na.last = TRUE)
+    best_file <- candidates[ord[1]]
+    cli_alert_success('Auto-detected latest vintage in macro_model folder: {basename(best_file)} [{best_file}]')
     return(list(
-      path = fallback_name,
-      name = fallback_name,
-      source = "fallback_default"
+      path = best_file,
+      name = basename(best_file),
+      source = "auto_detected_latest"
     ))
   }
-  
-  # Filter to files relevant to this model or general merge files
-  model_pattern <- sprintf("(%s|compr_scens_merge|scens_merge)", tolower(model))
-  matching_files <- all_files[grepl(model_pattern, basename(all_files), ignore.case = TRUE)]
-  if (length(matching_files) == 0) {
-    matching_files <- all_files
-  }
-  
-  # Extract YYYYMMDD date prefix and modification time
-  bnames <- basename(matching_files)
-  has_date <- grepl("^[0-9]{8}", bnames)
-  date_str <- sub("^([0-9]{8}).*", "\\1", bnames)
-  date_str[!has_date] <- "00000000"
-  mtimes <- as.numeric(file.mtime(matching_files))
-  mtimes[is.na(mtimes)] <- 0
-  
-  ord <- order(has_date, date_str, mtimes, decreasing = TRUE)
-  latest_file <- matching_files[ord[1]]
-  latest_bname <- basename(latest_file)
-  
-  cli::cli_alert_success("Auto-detected latest vintage in macro_model folder: {latest_bname} [{latest_file}]")
+
+  cli_alert_info('No external vintage found for {toupper(model)}. Falling back to default built-in vintage.')
   return(list(
-    path = normalizePath(latest_file, winslash = "/", mustWork = FALSE),
-    name = latest_bname,
-    source = "auto_detected_latest"
+    path = sprintf("20260428_compr_scens_merge_%s.csv", toupper(model)),
+    name = sprintf("20260428_compr_scens_merge_%s.csv", toupper(model)),
+    source = "builtin_default"
   ))
 }
 
@@ -140,13 +132,37 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir) {
   if (length(cands) > 0) {
     lu_file <- sort(cands, decreasing = TRUE)[1]
     cli_alert_success('Located downscaled land-use file: {basename(lu_file)} [{dirname(lu_file)}]')
-    return(list(model = model, scenario = scenario, lu_csv = lu_file, out_folder = dirname(lu_file)))
+    return(list(
+      model = model,
+      scenario = scenario,
+      lu_csv = lu_file,
+      out_folder = dirname(lu_file),
+      source_name = tools::file_path_sans_ext(basename(lu_file))
+    ))
   }
   cli_alert_warning('No existing downscaled land-use file found for {toupper(model)}. Will mock / generate minimal structure.')
-  return(list(model = model, scenario = scenario, lu_csv = NULL, out_folder = out_dir))
+  return(list(
+    model = model,
+    scenario = scenario,
+    lu_csv = NULL,
+    out_folder = out_dir,
+    source_name = toupper(model)
+  ))
 }
 
-run_act4cap_cascade_downscaling <- function(model, scenario, gamble_dir, out_dir, years, resolution, ncores, trial = FALSE, force = FALSE, input_file = "", smoke = trial) {
+run_act4cap_cascade_downscaling <- function(model,
+                                           scenario,
+                                           gamble_dir,
+                                           out_dir,
+                                           years,
+                                           resolution = "10km",
+                                           ncores = 4,
+                                           trial = FALSE,
+                                           force = FALSE,
+                                           input_file = "",
+                                           run_date = NULL,
+                                           version_tag = NULL,
+                                           smoke = trial) {
   cli_alert_info('Initiating Cascade downscaling execution for model={toupper(model)}, scenario={scenario}...')
   is_trial <- trial || smoke
   
@@ -186,17 +202,34 @@ run_act4cap_cascade_downscaling <- function(model, scenario, gamble_dir, out_dir
     return(locate_existing_downscaling(model, scenario, out_dir, gamble_dir))
   }
   
-  # 3. In trial mode, locate existing or write tiny subset
+  # 3. In trial mode, generate standardized lightweight test slice
   if (is_trial) {
-    trial_dir <- file.path(out_dir, sprintf('DS_ACT4CAP_AgMIP_%s_10km_TRIAL', toupper(model)))
-    trial_csv <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_10km_lu_base.csv', toupper(model)))
+    tag <- construct_version_tag(
+      model = model,
+      scenario = scenario,
+      macro_output = vintage_info$name,
+      resolution = resolution,
+      date = run_date,
+      trial = TRUE,
+      custom_tag = version_tag
+    )
+    trial_dir <- file.path(out_dir, sprintf('DS_ACT4CAP_AgMIP_%s_%s_TRIAL', toupper(model), resolution))
+    trial_csv <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_lu_%s.csv', tag, scenario))
     
     if (!force && file.exists(trial_csv)) {
       cli_alert_success('Reusing existing trial downscaling test file: {basename(trial_csv)} [FORCE=0]')
-      return(list(model = model, scenario = scenario, lu_csv = trial_csv, out_folder = trial_dir, input_vintage = vintage_info, cached = TRUE))
+      return(list(
+        model = model,
+        scenario = scenario,
+        lu_csv = trial_csv,
+        out_folder = trial_dir,
+        source_name = tag,
+        input_vintage = vintage_info,
+        cached = TRUE
+      ))
     }
     
-    cli_alert_info('Trial mode: generating lightweight test slice for {toupper(model)} (vintage: {vintage_info$name})...')
+    cli_alert_info('Trial mode: generating lightweight test slice for {toupper(model)} (tag: {tag})...')
     if (!dir.exists(trial_dir)) dir.create(trial_dir, recursive = TRUE)
     
     trial_dt <- data.table(
@@ -208,11 +241,18 @@ run_act4cap_cascade_downscaling <- function(model, scenario, gamble_dir, out_dir
     )
     fwrite(trial_dt, trial_csv)
     cli_alert_success('Created trial downscaling test file: {basename(trial_csv)}')
-    return(list(model = model, scenario = scenario, lu_csv = trial_csv, out_folder = trial_dir, input_vintage = vintage_info, cached = FALSE))
+    return(list(
+      model = model,
+      scenario = scenario,
+      lu_csv = trial_csv,
+      out_folder = trial_dir,
+      source_name = tag,
+      input_vintage = vintage_info,
+      cached = FALSE
+    ))
   }
   
   # 4. Production dispatch via Rscript run_downscaling.R
-  # Detect reorganized pipelines/ architecture, falling back to legacy scripts/ shims if needed
   script_cand <- if (file.exists(file.path(valid_gamble, 'pipelines', 'AGMIP', 'run_downscaling.R'))) {
     'pipelines/AGMIP/run_downscaling.R'
   } else if (file.exists(file.path(valid_gamble, 'scripts', 'AGMIP', 'run_downscaling.R'))) {

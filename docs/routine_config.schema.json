@@ -123,6 +123,16 @@
           "1"
         ]
       },
+      "RUN_DATE": {
+        "type": "string",
+        "title": "Run Date / Version Date",
+        "description": "Run Date / Version Date -- Date label used in output directories and filenames (e.g. '20261103'). If left empty, automatically defaults to the current system date (YYYYMMDD). OPTIONAL: leave empty for the built-in default."
+      },
+      "VERSION_TAG": {
+        "type": "string",
+        "title": "Custom Output Version Tag",
+        "description": "Custom Output Version Tag -- Optional additional version label or run identifier appended to all output directories and filenames (e.g. 'v1', 'deliv3', 'exp_test'). OPTIONAL: leave empty for the built-in default."
+      },
       "WORK_DIR": {
         "type": "string",
         "title": "Persistent Storage Mount (FUSE)",

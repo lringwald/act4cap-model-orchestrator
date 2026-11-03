@@ -3,15 +3,56 @@
 # =============================================================================
 # Merges downscaling, SWAT+ water quality, and Biodiversity Link (BII, cSAR, MSA)
 # metrics into unified indicator tables and summary dashboards.
+#
+# Generates standardized versioning labels:
+#   act4cap_integrated_synthesis_<model>_<scenario>_<macro_output>_<res>_<date>[_<custom_tag>][_TRIAL].csv
 # =============================================================================
 suppressPackageStartupMessages({
   library(data.table)
   library(cli)
 })
 
-synthesize_act4cap_results <- function(model, scenario, downscale_res, swat_res, bio_res, out_dir, force = FALSE) {
-  synth_dir <- file.path(out_dir, 'act4cap_synthesis')
-  synth_csv <- file.path(synth_dir, sprintf('act4cap_integrated_synthesis_%s_%s.csv', tolower(model), tolower(scenario)))
+if (!exists('construct_act4cap_output_filenames')) {
+  if (file.exists('R/version_labels.R')) source('R/version_labels.R')
+}
+
+synthesize_act4cap_results <- function(model,
+                                       scenario,
+                                       downscale_res,
+                                       swat_res,
+                                       bio_res,
+                                       out_dir,
+                                       force = FALSE,
+                                       resolution = '10km',
+                                       run_date = NULL,
+                                       version_tag = NULL,
+                                       macro_output = NULL,
+                                       trial = FALSE) {
+  # Resolve macro model output name / vintage
+  macro_out_name <- if (!is.null(macro_output) && nzchar(macro_output)) {
+    macro_output
+  } else if (!is.null(downscale_res$input_vintage$name)) {
+    downscale_res$input_vintage$name
+  } else if (!is.null(downscale_res$source_name)) {
+    downscale_res$source_name
+  } else {
+    basename(downscale_res$lu_csv)
+  }
+
+  fn <- construct_act4cap_output_filenames(
+    model = model,
+    scenario = scenario,
+    macro_output = macro_out_name,
+    downscale_csv = downscale_res$lu_csv,
+    resolution = resolution,
+    date = run_date,
+    trial = trial,
+    custom_tag = version_tag,
+    out_dir = out_dir
+  )
+
+  synth_dir <- fn$synthesis$dir_path
+  synth_csv <- fn$synthesis$csv
 
   # Check if synthesis already exists and upstream inputs were cached
   upstream_newly_computed <- (identical(swat_res$cached, FALSE)) || (identical(bio_res$cached, FALSE))
@@ -20,7 +61,7 @@ synthesize_act4cap_results <- function(model, scenario, downscale_res, swat_res,
     return(synth_csv)
   }
 
-  cli_alert_info('Compiling cross-pillar synthesis for {toupper(model)}...')
+  cli_alert_info('Compiling cross-pillar synthesis for {toupper(model)} [{fn$tag}]...')
   if (!dir.exists(synth_dir)) dir.create(synth_dir, recursive = TRUE)
 
   # 1. SWAT+ water quality summary
@@ -86,10 +127,10 @@ synthesize_act4cap_results <- function(model, scenario, downscale_res, swat_res,
   } else {
     synth_dt[, model := toupper(model)]
     synth_dt[, scenario := scenario]
-    setcolorder(synth_dt, c('model', 'scenario', 'Ns_reg', 'year'))
+    synth_dt[, tag := fn$tag]
+    setcolorder(synth_dt, c('model', 'scenario', 'tag', 'Ns_reg', 'year'))
   }
 
-  synth_csv <- file.path(synth_dir, sprintf('act4cap_integrated_synthesis_%s_%s.csv', tolower(model), tolower(scenario)))
   fwrite(synth_dt, synth_csv)
   cli_alert_success('Saved integrated multi-pillar synthesis CSV: {basename(synth_csv)} ({nrow(synth_dt)} records)')
 

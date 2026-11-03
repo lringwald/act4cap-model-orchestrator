@@ -56,7 +56,7 @@ flowchart TD
    - Translates downscaled land cover and crop fertilizer application into Hydrological Response Units (HRUs).
    - Simulates hydrological water yield (million m³), surface runoff coefficient, soil erosion sediment yield (ktons), and nitrogen/phosphorus leaching (tons) across European river basins.
    - Supports both `tentative` proxy-routing and native cluster simulation (`POSTMODEL_MODE`).
-   - Generates cell-level summaries (`swat_plus_cells_<model>_<scenario>.csv`) and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035, $10\,\text{km}$) for annual water yield, surface runoff, $N$-leaching risk, $P$-runoff risk, and sediment yield.
+   - Generates cell-level summaries (`swat_plus_cells_<tag>.csv`) and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035) for annual water yield, surface runoff, $N$-leaching risk, $P$-runoff risk, and sediment yield.
 
 3. **Biodiversity Link Post-Processor (`biodiversity`)**:
    - Implements the IIASA **Biodiversity_Link** methodology ([GitHub commit `6cc4443f24663622cbbae6f22dce5428bce6b50d`](https://github.com/iiasa/Biodiversity_Link/tree/6cc4443f24663622cbbae6f22dce5428bce6b50d)).
@@ -70,10 +70,40 @@ flowchart TD
      - **Biodiversity Intactness Index (BII)**: Calibrated against IIASA `BII_coefs.RData` and `BTC_LC_MAP.RData` across unmanaged primary forest, managed forest, extensive grassland, permanent bioenergy crops, and arable crops.
      - **Countryside Species-Area Relationship (cSAR16)**: Ecoregional extinction risk and habitat intactness index based on transformed vs. natural habitats.
      - **Mean Species Abundance (MSA)**: Landscape-level mean species abundance.
-   - Generates cell-level summaries (`biodiversity_link_cells_<model>_<scenario>.csv`), composite multi-metric RDS artifacts (`mapping_table` embedded), regional tabular summaries, and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035, $10\,\text{km}$) for `bii_score`, `csar_intactness`, and `msa_score`.
+   - Generates cell-level summaries (`biodiversity_link_cells_<tag>.csv`), composite multi-metric RDS artifacts (`mapping_table` embedded), regional tabular summaries, and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035) for `bii_score`, `csar_intactness`, and `msa_score`.
 
 4. **Multi-Pillar Synthesis (`postprocess` / `all`)**:
-   - Merges SWAT+ catchment metrics and Biodiversity Link indicators into a unified multi-pillar indicator CSV dataset: `act4cap_integrated_synthesis_<model>_<scenario>.csv`.
+   - Merges SWAT+ catchment metrics and Biodiversity Link indicators into a unified multi-pillar indicator CSV dataset: `act4cap_integrated_synthesis_<tag>.csv`.
+
+## Standardized Output Versioning & File Naming
+
+All output directories, tabular CSVs, RDS composites, and GeoTIFF rasters encode a standardized, reproducible multi-tier version label (`<tag>`):
+
+$$\text{tag} = \langle\text{model}\rangle\_\langle\text{scenario}\rangle\_\langle\text{macro\_output}\rangle\_\langle\text{resolution}\rangle\_\langle\text{date}\rangle[\_\langle\text{custom\_tag}\rangle][\_\text{TRIAL}]$$
+
+### Label Components:
+1. **Macro Model & Scenario**: Identifies the economic driver (e.g. `globiom_base`, `capri_ndc`).
+2. **Macro Model Output Name**: Stem of the source macro vintage (e.g. `20260916_compr_scens_merge` or `AgMIP_GLOBIOM_20261001`).
+3. **Downscale Resolution**: Spatial resolution of the simulation units (e.g. `10km`, `5km`, `2km`).
+4. **Date Stamp**: Execution date in `YYYYMMDD` format (configurable via `RUN_DATE`, defaults to current date).
+5. **Custom Version Tag**: Optional user identifier appended via `VERSION_TAG` (e.g. `v1`, `deliv3`).
+6. **Trial Mode Indicator**: Appended as `_TRIAL` whenever `TRIAL=1` or `TASK=trial` is active.
+
+### Example Outputs:
+- **SWAT+ Directory**: `swat_water_quality_globiom_base_20260916_compr_scens_merge_10km_20261103/`
+  - `swat_plus_water_quality_summary_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
+  - `swat_plus_cells_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
+  - `swat_plus_composite_globiom_base_20260916_compr_scens_merge_10km_20261103.rds`
+  - `rasters/swat_globiom_base_20260916_compr_scens_merge_10km_20261103_n_leach_kg_ha_2020.tif`
+- **Biodiversity Link Directory**: `biodiversity_link_globiom_base_20260916_compr_scens_merge_10km_20261103/`
+  - `biodiversity_link_bii_summary_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
+  - `biodiversity_link_csar_summary_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
+  - `biodiversity_link_msa_summary_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
+  - `biodiversity_link_cells_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
+  - `biodiversity_link_composite_globiom_base_20260916_compr_scens_merge_10km_20261103.rds`
+  - `rasters/biodiversity_globiom_base_20260916_compr_scens_merge_10km_20261103_bii_score_2020.tif`
+- **Integrated Synthesis**:
+  - `act4cap_synthesis/act4cap_integrated_synthesis_globiom_base_20260916_compr_scens_merge_10km_20261103.csv`
 
 ## Accelerator Drive & Cluster Mount Parity
 
@@ -93,8 +123,8 @@ The routine accepts macro-model inputs with flexible vintage selection via the `
 The orchestrator enforces automatic incremental caching across all workflow stages via the `FORCE` knob:
 - **Default (`FORCE=0` / Resume mode)**:
   - **Step 1 (Downscaling)**: Automatically checks if downscaled 10km land-use maps already exist for the `(model, scenario)` pair. If found, reuses them immediately and skips re-running downscaling.
-  - **Step 2A (SWAT+)**: Automatically checks if `swat_plus_water_quality_summary_<model>_<scenario>.csv` exists. If found, reuses it immediately and skips hydrological catchment re-simulation.
-  - **Step 2B (Biodiversity Link)**: Automatically checks if `biodiversity_link_bii_summary_<model>_<scenario>.csv`, `csar`, and `msa` exist. If found, reuses them immediately and skips ecological metric re-evaluation.
+  - **Step 2A (SWAT+)**: Automatically checks if versioned summary CSV exists. If found, reuses it immediately and skips hydrological catchment re-simulation.
+  - **Step 2B (Biodiversity Link)**: Automatically checks if versioned BII, cSAR, and MSA summaries exist. If found, reuses them immediately and skips ecological metric re-evaluation.
   - **Step 3 (Synthesis)**: If the final multi-pillar synthesis CSV exists and neither upstream submodel was freshly recomputed, reuses the existing synthesis dataset.
 - **Forced Re-computation (`FORCE=1` / Overwrite mode)**:
   - Bypasses cached outputs and forces end-to-end execution, overwriting all artifacts on disk.

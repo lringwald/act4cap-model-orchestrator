@@ -5,6 +5,9 @@
 #   1. SWAT+ toolkit interface (Python scripts 0-6 in Q:/swatplus_runs)
 #   2. Hydrological Response Unit (HRU) land-use & fertilizer raster alignment
 #   3. Catchment-level surface runoff, water yield, N leaching, P runoff & erosion
+#   4. Spatially explicit cell-level and GeoTIFF raster exports (EPSG:3035)
+#   5. Reproducible multi-tier versioning labels:
+#      <model>_<scenario>_<macro_output_name>_<resolution>_<date>[_<custom_tag>][_TRIAL]
 #
 # Upstream toolkit: Q:/swatplus_runs / /mnt/wdrv/act4cap/swatplus_runs
 # =============================================================================
@@ -16,24 +19,56 @@ suppressPackageStartupMessages({
 if (!exists('export_indicators_to_geotiff')) {
   if (file.exists('R/spatial_raster_export.R')) source('R/spatial_raster_export.R')
 }
+if (!exists('construct_act4cap_output_filenames')) {
+  if (file.exists('R/version_labels.R')) source('R/version_labels.R')
+}
 
 run_act4cap_swat_postprocess <- function(model,
-                                        scenario,
-                                        downscale_outputs,
-                                        out_dir,
-                                        swat_dir = 'Q:/swatplus_runs',
-                                        postmodel_mode = 'tentative',
-                                        trial = FALSE,
-                                        force = FALSE,
-                                        ncores = 4,
-                                        smoke = trial) {
+                                         scenario,
+                                         downscale_outputs,
+                                         out_dir,
+                                         swat_dir = 'Q:/swatplus_runs',
+                                         postmodel_mode = 'tentative',
+                                         trial = FALSE,
+                                         force = FALSE,
+                                         ncores = 4,
+                                         resolution = '10km',
+                                         run_date = NULL,
+                                         version_tag = NULL,
+                                         macro_output = NULL,
+                                         smoke = trial) {
   is_trial <- trial || smoke
   cli_h3('SWAT+ Water Quality Simulation [{toupper(model)} | {scenario}]')
   cli_alert_info('SWAT+ Toolkit Path: {swat_dir} (Mode: {toupper(postmodel_mode)})')
 
-  swat_out_dir <- file.path(out_dir, sprintf('swat_water_quality_%s_%s', tolower(model), tolower(scenario)))
-  out_csv <- file.path(swat_out_dir, sprintf('swat_plus_water_quality_summary_%s_%s.csv', tolower(model), tolower(scenario)))
-  composite_rds <- file.path(swat_out_dir, sprintf('swat_plus_composite_%s_%s.rds', tolower(model), tolower(scenario)))
+  # Resolve macro model output name / vintage
+  macro_out_name <- if (!is.null(macro_output) && nzchar(macro_output)) {
+    macro_output
+  } else if (!is.null(downscale_outputs$input_vintage$name)) {
+    downscale_outputs$input_vintage$name
+  } else if (!is.null(downscale_outputs$source_name)) {
+    downscale_outputs$source_name
+  } else {
+    basename(downscale_outputs$lu_csv)
+  }
+
+  fn <- construct_act4cap_output_filenames(
+    model = model,
+    scenario = scenario,
+    macro_output = macro_out_name,
+    downscale_csv = downscale_outputs$lu_csv,
+    resolution = resolution,
+    date = run_date,
+    trial = is_trial,
+    custom_tag = version_tag,
+    out_dir = out_dir
+  )
+
+  swat_out_dir    <- fn$swat$dir_path
+  out_csv         <- fn$swat$summary_csv
+  composite_rds   <- fn$swat$composite_rds
+  target_cell_csv <- fn$swat$cell_csv
+  raster_prefix   <- fn$swat$raster_prefix
 
   # Check if output already exists (unless force = TRUE)
   if (!force && file.exists(out_csv)) {
@@ -43,8 +78,10 @@ run_act4cap_swat_postprocess <- function(model,
       model         = model,
       scenario      = scenario,
       summary_csv   = out_csv,
+      cell_csv      = if (file.exists(target_cell_csv)) target_cell_csv else NULL,
       composite_rds = composite_rds,
       swat_dir      = swat_out_dir,
+      tag           = fn$tag,
       cached        = TRUE
     ))
   }
@@ -84,7 +121,7 @@ run_act4cap_swat_postprocess <- function(model,
   cli_alert_info('Processing {nrow(lu_dt)} spatial land use units for hydrological catchment routing...')
 
   # 3. Optional full-mode dispatch to Python raster conversion if available
-  if (postmodel_mode == 'full' && !smoke && has_toolkit) {
+  if (postmodel_mode == 'full' && !is_trial && has_toolkit) {
     py_script <- file.path(swat_dir, '1_merged_script.py')
     if (file.exists(py_script)) {
       cli_alert_info('Dispatching SWAT+ Step 1 (raster reclassification) via {basename(py_script)}...')
@@ -148,7 +185,6 @@ run_act4cap_swat_postprocess <- function(model,
     total_sediment_ktons  = round(sum(crp_area_km2 * 100 * sediment_yield_t_ha / 1000, na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
-  out_csv <- file.path(swat_out_dir, sprintf('swat_plus_water_quality_summary_%s_%s.csv', tolower(model), tolower(scenario)))
   fwrite(swat_summary, out_csv)
 
   # 5. Spatially explicit cell-level export (CSV & GeoTIFF rasters)
@@ -164,7 +200,7 @@ run_act4cap_swat_postprocess <- function(model,
       water_yield_mm   = round(weighted.mean(water_yield_mm, crp_area_km2, na.rm = TRUE), 2)
     ), by = .(ns, Ns_reg, year)]
 
-    cell_csv <- file.path(swat_out_dir, sprintf('swat_plus_cells_%s_%s.csv', tolower(model), tolower(scenario)))
+    cell_csv <- target_cell_csv
     fwrite(cell_swat, cell_csv)
     cli_alert_success('Saved spatially explicit cell-level summary: {basename(cell_csv)}')
 
@@ -173,7 +209,7 @@ run_act4cap_swat_postprocess <- function(model,
         cell_dt = cell_swat,
         indicator_cols = c('n_leach_kg_ha', 'p_runoff_kg_ha', 'sediment_t_ha', 'water_yield_mm'),
         out_dir = swat_out_dir,
-        prefix = sprintf('swat_%s_%s', tolower(model), tolower(scenario))
+        prefix = raster_prefix
       ),
       error = function(e) {
         cli_alert_warning('GeoTIFF raster export skipped: {e$message}')
@@ -182,14 +218,19 @@ run_act4cap_swat_postprocess <- function(model,
     )
   }
 
-  composite_rds <- file.path(swat_out_dir, sprintf('swat_plus_composite_%s_%s.rds', tolower(model), tolower(scenario)))
   saveRDS(list(
     swat_summary = swat_summary,
     cell_summary = if (exists('cell_swat')) cell_swat else NULL,
     rasters      = tifs,
+    tag          = fn$tag,
     metadata     = list(
       model          = model,
       scenario       = scenario,
+      macro_output   = macro_out_name,
+      resolution     = resolution,
+      date           = run_date,
+      trial          = is_trial,
+      tag            = fn$tag,
       swat_dir       = swat_dir,
       has_toolkit    = has_toolkit,
       has_hru_shp    = has_hru_shp,
@@ -207,6 +248,7 @@ run_act4cap_swat_postprocess <- function(model,
     cell_csv      = cell_csv,
     rasters       = tifs,
     composite_rds = composite_rds,
-    swat_dir      = swat_out_dir
+    swat_dir      = swat_out_dir,
+    tag           = fn$tag
   ))
 }

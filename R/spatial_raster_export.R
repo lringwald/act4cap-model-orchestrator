@@ -111,7 +111,12 @@ export_indicators_to_geotiff <- function(cell_dt,
     for (ind in indicator_cols) {
       if (!(ind %in% names(m))) next
       
-      tif_name <- sprintf('%s_%s_%s_10km.tif', prefix, ind, yr)
+      has_res <- grepl('[0-9]+km', prefix, ignore.case = TRUE)
+      tif_name <- if (has_res) {
+        sprintf('%s_%s_%s.tif', prefix, ind, yr)
+      } else {
+        sprintf('%s_%s_%s_10km.tif', prefix, ind, yr)
+      }
       tif_path <- file.path(raster_dir, tif_name)
       
       xyz_df <- as.data.frame(m[, .(x = x_10kmID, y = y_10kmID, z = get(ind))])

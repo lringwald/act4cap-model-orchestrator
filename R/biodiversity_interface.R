@@ -1,13 +1,18 @@
 # =============================================================================
-# R/biodiversity_interface.R — Biodiversity Link Impact Post-Processor
+# R/biodiversity_interface.R — Biodiversity Link Ecological Post-Processor
 # =============================================================================
-# Implements the IIASA Biodiversity_Link methodology:
-#   1. Biodiversity Intactness Index (BII) based on BII_coefs.RData
-#   2. Countryside Species-Area Relationship (cSAR16) extinction risk assessment
-#   3. Mean Species Abundance (MSA) across forest management and agricultural gradients
+# Connects the Act4Cap Orchestrator with the IIASA Biodiversity_Link methodology:
+#   1. Formal crosswalk mapping between downscaled AgMIP land uses and Biodiversity
+#      Link classes (lc_type, lc_btc, lc_csar, bii_luclass, csar affinity, msa).
+#   2. Dynamic coefficient calibration from official IIASA BII_coefs.RData.
+#   3. Biodiversity Intactness Index (BII) calculation.
+#   4. Countryside Species-Area Relationship (cSAR16) extinction risk index.
+#   5. Mean Species Abundance (MSA) calculation.
+#   6. Spatially explicit cell-level and GeoTIFF raster exports (EPSG:3035).
+#   7. Reproducible multi-tier versioning labels:
+#      <model>_<scenario>_<macro_output_name>_<resolution>_<date>[_<custom_tag>][_TRIAL]
 #
-# Upstream repository: https://github.com/iiasa/Biodiversity_Link
-# Reference commit: 6cc4443f24663622cbbae6f22dce5428bce6b50d
+# Upstream repository: vendor/Biodiversity_Link (commit 6cc4443f24663622cbbae6f22dce5428bce6b50d)
 # =============================================================================
 suppressPackageStartupMessages({
   library(data.table)
@@ -17,26 +22,20 @@ suppressPackageStartupMessages({
 if (!exists('export_indicators_to_geotiff')) {
   if (file.exists('R/spatial_raster_export.R')) source('R/spatial_raster_export.R')
 }
+if (!exists('construct_act4cap_output_filenames')) {
+  if (file.exists('R/version_labels.R')) source('R/version_labels.R')
+}
 
 load_agmip_biodiversity_mapping <- function(mapping_file = 'config/mapping_agmip_to_biodiversity_link.csv',
-                                           bio_dir = 'vendor/Biodiversity_Link') {
-  if (is.null(mapping_file) || !file.exists(mapping_file)) {
-    candidates <- c(
-      'config/mapping_agmip_to_biodiversity_link.csv',
-      file.path(bio_dir, 'mapping_agmip_to_biodiversity_link.csv'),
-      file.path('..', 'config', 'mapping_agmip_to_biodiversity_link.csv')
-    )
-    mapping_file <- candidates[file.exists(candidates)][1]
-  }
-
-  if (is.na(mapping_file) || is.null(mapping_file) || !file.exists(mapping_file)) {
-    cli::cli_alert_warning('Biodiversity mapping table not found. Using fallback standard AgMIP definitions.')
+                                            bio_dir = 'vendor/Biodiversity_Link') {
+  if (!file.exists(mapping_file)) {
+    cli::cli_alert_warning('Biodiversity mapping file not found at {mapping_file}. Building standard default crosswalk.')
     map_dt <- data.table(
-      agmip_class           = c('CRP|ARA|WHT', 'CRP|ARA|CGR|MAI', 'CRP|ARA|CGR|OCG', 'CRP|ARA|OCR', 
-                                'CRP|ARA|OSD|SRS', 'CRP|ARA|OSD|OOC', 'CRP|ARA|RIC', 'CRP|ARA|SGC', 
-                                'CRP|ARA|PFB|COT', 'CRP|ARA|OTH', 'CRP|ARA', 'CRP|PRM', 
+      agmip_class           = c('CRP|ARA|WHT', 'CRP|ARA|CGR|MAI', 'CRP|ARA|CGR|OCG', 'CRP|ARA|OCR',
+                                'CRP|ARA|OSD|SRS', 'CRP|ARA|OSD|OOC', 'CRP|ARA|RIC', 'CRP|ARA|SGC',
+                                'CRP|ARA|PFB|COT', 'CRP|ARA|OTH', 'CRP|ARA', 'CRP|PRM',
                                 'FOR|MAN', 'FOR|PRIM', 'GRS', 'ONV', 'OLD', 'BUI'),
-      agmip_category        = c(rep('arable_cropland', 11), 'permanent_cropland', 
+      agmip_category        = c(rep('arable_cropland', 11), 'permanent_cropland',
                                 'managed_forest', 'primary_forest', 'grassland', 'natural_vegetation', 'other_land', 'built_up'),
       lc_type               = c(rep('CrpLnd', 11), 'PltFor', 'forest_managed', 'forest_unmanaged', 'Grass', 'OthNatLnd', 'OthNatLnd', 'built_area'),
       lc_btc                = c(rep('cropland_other', 11), 'cropland_2Gbioen', 'forest_managed', 'forest_unmanaged_primary', 'grassland', 'other_primary', 'other', 'built.up'),
@@ -74,25 +73,54 @@ load_agmip_biodiversity_mapping <- function(mapping_file = 'config/mapping_agmip
 }
 
 run_act4cap_biodiversity_postprocess <- function(model,
-                                                scenario,
-                                                downscale_outputs,
-                                                out_dir,
-                                                bio_dir = 'vendor/Biodiversity_Link',
-                                                mapping_file = 'config/mapping_agmip_to_biodiversity_link.csv',
-                                                postmodel_mode = 'tentative',
-                                                trial = FALSE,
-                                                force = FALSE,
-                                                ncores = 4,
-                                                smoke = trial) {
+                                                 scenario,
+                                                 downscale_outputs,
+                                                 out_dir,
+                                                 bio_dir = 'vendor/Biodiversity_Link',
+                                                 mapping_file = 'config/mapping_agmip_to_biodiversity_link.csv',
+                                                 postmodel_mode = 'tentative',
+                                                 trial = FALSE,
+                                                 force = FALSE,
+                                                 ncores = 4,
+                                                 resolution = '10km',
+                                                 run_date = NULL,
+                                                 version_tag = NULL,
+                                                 macro_output = NULL,
+                                                 smoke = trial) {
   is_trial <- trial || smoke
   cli_h3('Biodiversity Link Ecological Assessment [{toupper(model)} | {scenario}]')
   cli_alert_info('Engine Path: {bio_dir} (Mode: {toupper(postmodel_mode)})')
 
-  bio_out_dir <- file.path(out_dir, sprintf('biodiversity_link_%s_%s', tolower(model), tolower(scenario)))
-  bii_csv  <- file.path(bio_out_dir, sprintf('biodiversity_link_bii_summary_%s_%s.csv', tolower(model), tolower(scenario)))
-  csar_csv <- file.path(bio_out_dir, sprintf('biodiversity_link_csar_summary_%s_%s.csv', tolower(model), tolower(scenario)))
-  msa_csv  <- file.path(bio_out_dir, sprintf('biodiversity_link_msa_summary_%s_%s.csv', tolower(model), tolower(scenario)))
-  composite_rds <- file.path(bio_out_dir, sprintf('biodiversity_link_composite_%s_%s.rds', tolower(model), tolower(scenario)))
+  # Resolve macro model output name / vintage
+  macro_out_name <- if (!is.null(macro_output) && nzchar(macro_output)) {
+    macro_output
+  } else if (!is.null(downscale_outputs$input_vintage$name)) {
+    downscale_outputs$input_vintage$name
+  } else if (!is.null(downscale_outputs$source_name)) {
+    downscale_outputs$source_name
+  } else {
+    basename(downscale_outputs$lu_csv)
+  }
+
+  fn <- construct_act4cap_output_filenames(
+    model = model,
+    scenario = scenario,
+    macro_output = macro_out_name,
+    downscale_csv = downscale_outputs$lu_csv,
+    resolution = resolution,
+    date = run_date,
+    trial = is_trial,
+    custom_tag = version_tag,
+    out_dir = out_dir
+  )
+
+  bio_out_dir     <- fn$biodiversity$dir_path
+  bii_csv         <- fn$biodiversity$bii_csv
+  csar_csv        <- fn$biodiversity$csar_csv
+  msa_csv         <- fn$biodiversity$msa_csv
+  composite_rds   <- fn$biodiversity$composite_rds
+  target_cell_csv <- fn$biodiversity$cell_csv
+  raster_prefix   <- fn$biodiversity$raster_prefix
 
   # Check if outputs already exist (unless force = TRUE)
   if (!force && file.exists(bii_csv) && file.exists(csar_csv) && file.exists(msa_csv)) {
@@ -104,8 +132,10 @@ run_act4cap_biodiversity_postprocess <- function(model,
       summary_csv    = msa_csv,
       bii_csv        = bii_csv,
       csar_csv       = csar_csv,
+      cell_csv       = if (file.exists(target_cell_csv)) target_cell_csv else NULL,
       composite_rds  = composite_rds,
       bio_dir        = bio_out_dir,
+      tag            = fn$tag,
       cached         = TRUE
     ))
   }
@@ -190,7 +220,6 @@ run_act4cap_biodiversity_postprocess <- function(model,
     grassland_km2       = round(sum(crp_area_km2[agmip_category == 'grassland'], na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
-  bii_csv <- file.path(bio_out_dir, sprintf('biodiversity_link_bii_summary_%s_%s.csv', tolower(model), tolower(scenario)))
   fwrite(bii_summary, bii_csv)
 
   # 4. Aggregate cSAR16 Extinction Risk & Habitat Intactness Summary
@@ -202,7 +231,6 @@ run_act4cap_biodiversity_postprocess <- function(model,
     transformed_land_km2   = round(sum(crp_area_km2[agmip_category %in% c('arable_cropland', 'built_up')], na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
-  csar_csv <- file.path(bio_out_dir, sprintf('biodiversity_link_csar_summary_%s_%s.csv', tolower(model), tolower(scenario)))
   fwrite(csar_summary, csar_csv)
 
   # 5. Aggregate MSA Summary Table
@@ -215,7 +243,6 @@ run_act4cap_biodiversity_postprocess <- function(model,
     grassland_km2        = round(sum(crp_area_km2[agmip_category == 'grassland'], na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
-  msa_csv <- file.path(bio_out_dir, sprintf('biodiversity_link_msa_summary_%s_%s.csv', tolower(model), tolower(scenario)))
   fwrite(msa_summary, msa_csv)
 
   # 6. Spatially explicit cell-level export (CSV & GeoTIFF rasters)
@@ -230,7 +257,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
       msa_score           = round(weighted.mean(msa_lu_coef, crp_area_km2, na.rm = TRUE), 4)
     ), by = .(ns, Ns_reg, year)]
 
-    cell_csv <- file.path(bio_out_dir, sprintf('biodiversity_link_cells_%s_%s.csv', tolower(model), tolower(scenario)))
+    cell_csv <- target_cell_csv
     fwrite(cell_bii, cell_csv)
     cli_alert_success('Saved spatially explicit cell-level summary: {basename(cell_csv)}')
 
@@ -239,7 +266,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
         cell_dt = cell_bii,
         indicator_cols = c('bii_score', 'csar_intactness', 'msa_score'),
         out_dir = bio_out_dir,
-        prefix = sprintf('biodiversity_%s_%s', tolower(model), tolower(scenario))
+        prefix = raster_prefix
       ),
       error = function(e) {
         cli_alert_warning('GeoTIFF raster export skipped: {e$message}')
@@ -250,7 +277,6 @@ run_act4cap_biodiversity_postprocess <- function(model,
 
   # 7. Save composite RDS bundle
   has_iiasa_tables <- file.exists(file.path(bio_dir, 'Input', 'BII_coefs.RData'))
-  composite_rds <- file.path(bio_out_dir, sprintf('biodiversity_link_composite_%s_%s.rds', tolower(model), tolower(scenario)))
   saveRDS(list(
     bii_summary   = bii_summary,
     csar_summary  = csar_summary,
@@ -258,9 +284,15 @@ run_act4cap_biodiversity_postprocess <- function(model,
     cell_summary  = if (exists('cell_bii')) cell_bii else NULL,
     mapping_table = map_dt,
     rasters       = tifs,
+    tag           = fn$tag,
     metadata      = list(
       model           = model,
       scenario        = scenario,
+      macro_output    = macro_out_name,
+      resolution      = resolution,
+      date            = run_date,
+      trial           = is_trial,
+      tag             = fn$tag,
       bio_dir         = bio_dir,
       mapping_file    = mapping_file,
       commit          = "6cc4443f24663622cbbae6f22dce5428bce6b50d",
@@ -283,6 +315,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
     cell_csv       = cell_csv,
     rasters        = tifs,
     composite_rds  = composite_rds,
-    bio_dir        = bio_out_dir
+    bio_dir        = bio_out_dir,
+    tag            = fn$tag
   ))
 }

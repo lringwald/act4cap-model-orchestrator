@@ -11,6 +11,8 @@
   "NCORES": "4",
   "TRIAL": "0",
   "FORCE": "0",
+  "RUN_DATE": "",
+  "VERSION_TAG": "",
   "WORK_DIR": "/mnt/wdrv/act4cap",
   "OUTPUT_DIR": "outputs",
   "INPUT_DIR": "inputs",

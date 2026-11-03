@@ -9,6 +9,7 @@ suppressPackageStartupMessages({
 })
 
 # Load helper interfaces
+source('R/version_labels.R')
 source('R/cascade_interface.R')
 source('R/swat_interface.R')
 source('R/biodiversity_interface.R')
@@ -44,6 +45,8 @@ RESOLUTION       <- get_param('RESOLUTION', '10km')
 NCORES           <- as.integer(get_param('NCORES', '4'))
 TRIAL            <- (get_param('TRIAL', '0') %in% c('1', 'true', 'TRUE', 'yes')) || (get_param('SMOKE', '0') %in% c('1', 'true', 'TRUE', 'yes')) || (TASK %in% c('trial', 'smoke'))
 FORCE            <- get_param('FORCE', '0') %in% c('1', 'true', 'TRUE', 'yes')
+RUN_DATE         <- get_param('RUN_DATE', '')
+VERSION_TAG      <- get_param('VERSION_TAG', '')
 WORK_DIR         <- get_param('WORK_DIR', '/mnt/wdrv/act4cap')
 OUTPUT_DIR       <- get_param('OUTPUT_DIR', 'outputs')
 INPUT_DIR        <- get_param('INPUT_DIR', 'inputs')
@@ -119,6 +122,8 @@ cli_alert_info('Spatial Mediator:  Cascade Interface [{gamble_dir_resolved}]')
 cli_alert_info('Subprocess Models: POSTMODELS={POSTMODELS} -> Water(SWAT+)={fifelse(run_swat_active, "ON", "OFF")}, Biodiversity={fifelse(run_bio_active, "ON", "OFF")}')
 cli_alert_info('Post-Model Mode:   {toupper(POSTMODEL_MODE)}')
 cli_alert_info('Grid Resolution:   {RESOLUTION}')
+cli_alert_info('Version Date:      {fifelse(nzchar(RUN_DATE), RUN_DATE, paste0(format(Sys.Date(), "%Y%m%d"), " (auto)"))}')
+if (nzchar(VERSION_TAG)) cli_alert_info('Custom Version Tag: {VERSION_TAG}')
 cli_alert_info('Execution Mode:    {fifelse(TRIAL, "TRIAL (Fast verification slice)", "FULL (Production run)")}')
 cli_alert_info('Force Re-run:      {fifelse(FORCE, "YES (Recomputing & overwriting)", "NO (Auto-resolving & reusing existing step outputs)")}')
 cli_alert_info('Allocated Cores:   {NCORES}')
@@ -178,7 +183,9 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       ncores = cores,
       trial = TRIAL,
       force = FORCE,
-      input_file = INPUT_FILE
+      input_file = INPUT_FILE,
+      run_date = RUN_DATE,
+      version_tag = VERSION_TAG
     )
   } else {
     cli::cli_alert_info('  [Step 1/3] Skipping Spatial Mediation (TASK={TASK}). Locating existing mediated maps...')
@@ -198,7 +205,11 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       postmodel_mode = POSTMODEL_MODE,
       trial = TRIAL,
       force = FORCE,
-      ncores = cores
+      ncores = cores,
+      resolution = RESOLUTION,
+      run_date = RUN_DATE,
+      version_tag = VERSION_TAG,
+      macro_output = vintage_preview$name
     )
   }
   
@@ -215,7 +226,11 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       postmodel_mode = POSTMODEL_MODE,
       trial = TRIAL,
       force = FORCE,
-      ncores = cores
+      ncores = cores,
+      resolution = RESOLUTION,
+      run_date = RUN_DATE,
+      version_tag = VERSION_TAG,
+      macro_output = vintage_preview$name
     )
   }
   
@@ -230,7 +245,12 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       swat_res = swat_res,
       bio_res = bio_res,
       out_dir = out_path,
-      force = FORCE
+      force = FORCE,
+      resolution = RESOLUTION,
+      run_date = RUN_DATE,
+      version_tag = VERSION_TAG,
+      macro_output = vintage_preview$name,
+      trial = TRIAL
     )
   }
   

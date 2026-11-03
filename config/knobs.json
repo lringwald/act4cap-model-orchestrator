@@ -218,6 +218,28 @@
       "tasks": []
     },
     {
+      "name": "RUN_DATE",
+      "env": "RUN_DATE",
+      "type": "string",
+      "default": "",
+      "blank": "",
+      "scope": "operational",
+      "label": "Run Date / Version Date",
+      "desc": "Date label used in output directories and filenames (e.g. '20261103'). If left empty, automatically defaults to the current system date (YYYYMMDD).",
+      "tasks": []
+    },
+    {
+      "name": "VERSION_TAG",
+      "env": "VERSION_TAG",
+      "type": "string",
+      "default": "",
+      "blank": "",
+      "scope": "operational",
+      "label": "Custom Output Version Tag",
+      "desc": "Optional additional version label or run identifier appended to all output directories and filenames (e.g. 'v1', 'deliv3', 'exp_test').",
+      "tasks": []
+    },
+    {
       "name": "WORK_DIR",
       "env": "WORK_DIR",
       "type": "string",
