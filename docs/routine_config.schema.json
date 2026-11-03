@@ -34,17 +34,7 @@
         "title": "Macro Model Input File / Vintage",
         "description": "Macro Model Input File / Vintage -- Specific macro-economic data vintage to process from the model outputs folder. Select 'latest' to automatically detect the newest date vintage available, or choose a specific vintage from the dropdown menu.",
         "default": "latest",
-        "enum": [
-          "latest",
-          "20260916_compr_scens_merge.csv",
-          "20260319_MAGNET_AgMIP_accelerator.csv",
-          "20260305_MAGNET_AgMIP.csv",
-          "20260221_MAGNET_AgMIP_accelerator.csv",
-          "20251218_MAGNET_AgMIP_accelerator.csv",
-          "CAPRI_act4cap27_results_20260518.csv",
-          "CAPRI_act4cap27_results_20260415.csv",
-          "CAPRI_act4cap27_results_20260413.csv"
-        ]
+        "enum": ["latest", "20260916_compr_scens_merge.csv", "20260319_MAGNET_AgMIP_accelerator.csv", "20260305_MAGNET_AgMIP.csv", "20260221_MAGNET_AgMIP_accelerator.csv", "20251218_MAGNET_AgMIP_accelerator.csv", "CAPRI_act4cap27_results_20260518.csv", "CAPRI_act4cap27_results_20260415.csv", "CAPRI_act4cap27_results_20260413.csv"]
       },
       "CUSTOM_INPUT_FILE": {
         "type": "string",
@@ -57,15 +47,7 @@
         "title": "Precomputed Downscaling in Target Folder",
         "description": "Precomputed Downscaling in Target Folder -- Select an available pre-computed 10km downscaling output from the target folder (W:/cascade_gamble_outputs), or 'auto' to automatically match the selected macro model and scenario, or 'none' to force fresh spatial mediation.",
         "default": "auto",
-        "enum": [
-          "auto",
-          "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001",
-          "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001",
-          "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001",
-          "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001",
-          "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001",
-          "none"
-        ]
+        "enum": ["auto", "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001", "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_TRIAL", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001", "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001", "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001", "none"]
       },
       "POSTMODELS": {
         "type": "string",
