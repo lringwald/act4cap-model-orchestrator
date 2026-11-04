@@ -157,19 +157,23 @@ run_act4cap_swat_postprocess <- function(model,
   Sys.setenv(ACT4CAP_LU_FILE     = lu_file)
   Sys.setenv(ACT4CAP_TRIAL       = fifelse(is_trial, "1", "0"))
   Sys.setenv(ACT4CAP_CORES       = as.character(ncores))
+  Sys.setenv(PYTHONPATH          = paste(unique(c(swat_dir, Sys.getenv("PYTHONPATH"))), collapse = .Platform$path.sep))
 
   txtinout_dir <- file.path(swat_dir, 'default_hru_shp', 'TxtInOut')
   if (file.exists(run_py)) {
     cli_alert_info('Dispatching authentic SWAT+ pipeline: {basename(run_py)}...')
-    dispatch_cmd <- sprintf('python "%s" --model "%s" --scenario "%s" --input "%s" --out "%s"',
-                            run_py, model, scenario, lu_file, swat_out_dir)
+    dispatch_cmd <- if (basename(run_py) == '0_run_pipeline.py') {
+      sprintf('cd "%s" && python "%s" --scenario "%s"', swat_dir, basename(run_py), scenario)
+    } else {
+      sprintf('cd "%s" && python "%s" --scenario "%s"', swat_dir, basename(run_py), scenario)
+    }
     status <- tryCatch({
       system(dispatch_cmd)
     }, error = function(e) {
       stop(sprintf("SWAT+ Python execution failed: %s", conditionMessage(e)))
     })
     if (!identical(status, 0L) && !identical(status, 0)) {
-      # If python command not found or returned non-zero, fail loudly unless TxtInOut contains verified calibrated tables
+      # If python command returned non-zero, fail loudly unless TxtInOut contains verified calibrated tables
       if (!dir.exists(txtinout_dir) || !file.exists(file.path(txtinout_dir, 'basin_wb_aa.csv'))) {
         stop(cli::format_error(c(
           "x" = "Authentic SWAT+ simulation execution returned non-zero exit code ({status}).",

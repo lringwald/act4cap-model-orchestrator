@@ -46,7 +46,7 @@
         "title": "Precomputed Downscaling in Target Folder",
         "description": "Precomputed Downscaling in Target Folder -- Select an available pre-computed 10km downscaling output from the target folder (W:/cascade_gamble_outputs), or 'auto' to automatically match the selected macro model and scenario, or 'none' to force fresh spatial mediation.",
         "default": "auto",
-        "enum": ["auto", "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001", "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_TRIAL", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001", "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001", "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001", "none"]
+        "enum": ["auto", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_TRIAL", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001", "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001", "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001", "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001", "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001", "none"]
       },
       "POSTMODELS": {
         "type": "string",
