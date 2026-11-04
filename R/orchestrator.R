@@ -57,10 +57,10 @@ WORK_DIR         <- get_param('WORK_DIR', '/mnt/wdrv/act4cap')
 OUTPUT_DIR       <- get_param('OUTPUT_DIR', 'outputs')
 INPUT_DIR        <- get_param('INPUT_DIR', 'inputs')
 GAMBLE_DIR       <- get_param('CASCADING_GAMBLE_DIR', 'g:/My Drive/R/cascadinggamble-core')
-SWATPLUS_DIR     <- get_param('SWATPLUS_DIR', '/mnt/wdrv/act4cap/swatplus_runs')
+SWATPLUS_DIR     <- get_param('SWATPLUS_DIR', '/mnt/wdrv/swatplus_runs')
 BIODIVERSITY_DIR <- get_param('BIODIVERSITY_LINK_DIR', 'vendor/Biodiversity_Link')
 BIODIVERSITY_MAPPING_FILE <- get_param('BIODIVERSITY_MAPPING_FILE', 'config/mapping_agmip_to_biodiversity_link.csv')
-POSTMODEL_MODE   <- tolower(get_param('POSTMODEL_MODE', 'tentative'))
+POSTMODEL_MODE   <- tolower(get_param('POSTMODEL_MODE', 'full'))
 
 # Auto-resolve downscaling suite directory
 gamble_dir_resolved <- GAMBLE_DIR
@@ -70,13 +70,11 @@ if (!dir.exists(gamble_dir_resolved)) {
   }
 }
 
-# Auto-resolve Windows host paths if cluster FUSE mount path was passed
+# Auto-resolve SWAT+ directory across cluster and Windows mount points
 swat_dir_resolved <- SWATPLUS_DIR
-if (.Platform$OS.type == "windows") {
-  if (dir.exists("W:/swatplus_runs")) {
-    swat_dir_resolved <- "W:/swatplus_runs"
-  } else if (!dir.exists(swat_dir_resolved) && dir.exists("swatplus_runs")) {
-    swat_dir_resolved <- "swatplus_runs"
+if (!dir.exists(swat_dir_resolved)) {
+  for (cand in c('/mnt/wdrv/swatplus_runs', 'W:/swatplus_runs', 'Q:/swatplus_runs', '/mnt/wdrv/act4cap/swatplus_runs', 'swatplus_runs')) {
+    if (dir.exists(cand)) { swat_dir_resolved <- cand; break }
   }
 }
 

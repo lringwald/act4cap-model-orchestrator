@@ -19,8 +19,8 @@
   "OUTPUT_DIR": "outputs",
   "INPUT_DIR": "inputs",
   "CASCADING_GAMBLE_DIR": "/app/gamble-cascade",
-  "SWATPLUS_DIR": "/mnt/wdrv/act4cap/swatplus_runs",
+  "SWATPLUS_DIR": "/mnt/wdrv/swatplus_runs",
   "BIODIVERSITY_LINK_DIR": "vendor/Biodiversity_Link",
   "BIODIVERSITY_MAPPING_FILE": "config/mapping_agmip_to_biodiversity_link.csv",
-  "POSTMODEL_MODE": "tentative"
+  "POSTMODEL_MODE": "full"
 }

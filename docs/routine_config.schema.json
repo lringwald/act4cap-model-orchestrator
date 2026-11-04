@@ -176,8 +176,8 @@
       "SWATPLUS_DIR": {
         "type": "string",
         "title": "SWAT+ Toolkit Directory",
-        "description": "SWAT+ Toolkit Directory -- Path to the SWAT+ Python scripts (0-6), default HRU shapefile, and model binaries (e.g. Q:/swatplus_runs locally or /mnt/wdrv/act4cap/swatplus_runs on WKUBE).",
-        "default": "/mnt/wdrv/act4cap/swatplus_runs"
+        "description": "SWAT+ Toolkit Directory -- Path to the SWAT+ Python scripts (0-6), default HRU shapefile, and model binaries (e.g. W:/swatplus_runs locally or /mnt/wdrv/swatplus_runs on WKUBE).",
+        "default": "/mnt/wdrv/swatplus_runs"
       },
       "BIODIVERSITY_LINK_DIR": {
         "type": "string",
@@ -194,10 +194,9 @@
       "POSTMODEL_MODE": {
         "type": "string",
         "title": "Post-Modelling Execution Mode",
-        "description": "Post-Modelling Execution Mode -- Execution mode for post-models: 'tentative' runs integrated analytical post-processing with graceful fallbacks; 'full' executes native cluster simulation pipelines; 'trial' executes rapid verification proof.",
-        "default": "tentative",
+        "description": "Post-Modelling Execution Mode -- Execution mode for post-models: 'full' executes native simulation pipelines without heuristic fallbacks; 'trial' executes rapid verification proof.",
+        "default": "full",
         "enum": [
-          "tentative",
           "full",
           "trial"
         ]

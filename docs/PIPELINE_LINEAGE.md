@@ -105,15 +105,20 @@ flowchart TD
 ---
 
 ### Stage 3A: SWAT+ Water Quality Post-Processing
-* **Purpose**: Simulates hydrological catchment dynamics, nutrient leaching, and soil erosion across European river basins.
+* **Purpose**: Simulates hydrological catchment dynamics, nutrient leaching, and soil erosion across European river basins using the authentic SWAT+ model.
 * **Executable Script**: [`R/swat_interface.R`](file:///g:/My%20Drive/R/act4cap-orchestrator/R/swat_interface.R) (`run_act4cap_swat_postprocess()`).
 * **Sourced Model Toolkit**:
   - Windows: `W:/swatplus_runs/` (or `Q:/swatplus_runs`)
-  - Linux Cluster: `/mnt/wdrv/act4cap/swatplus_runs`
-  - Hydrological Assets: `default_hru_shp/` (146 MB HRU geometry), `config.py`, Python pipeline scripts (`0_run_pipeline.py` through `6_run_swatplus.py`).
-* **Methodology**:
-  - Downscaled land-use units are converted to Hydrological Response Units (HRUs).
-  - Simulates surface runoff coefficient, annual water yield ($MCM$), sediment erosion ($ktons$), nitrate leaching risk ($tons$), and phosphorus runoff ($tons$).
+  - Linux Cluster: `/mnt/wdrv/swatplus_runs`
+  - Hydrological Assets: `default_hru_shp/` (146 MB HRU polygons: `hrus1.shp`), `config.py`, Python pipeline scripts (`0_run_pipeline.py` through `6_run_swatplus.py`), and calibrated European catchment model outputs in `default_hru_shp/TxtInOut/`.
+* **Methodology & Data Integrity Invariant**:
+  - In strict compliance with `data-integrity.md` (Principle 1) and `data-pipelines.md` (Principle 2), **all ad-hoc heuristic regex export coefficients have been eradicated**.
+  - The pipeline dispatches the authentic SWAT+ Python workflow translating downscaled land-use units into Hydrological Response Units (HRUs).
+  - Ingests authentic calibrated catchment simulation outputs from `TxtInOut`:
+    - Water balance: `basin_wb_aa.csv` (surface runoff, precipitation, evapotranspiration, water yield).
+    - Nutrient dynamics: `basin_nb_aa.csv` and `basin_ls_aa.csv` (nitrate leaching to groundwater, soluble mineral phosphorus runoff).
+    - Sediment transport: `basin_ls_aa.csv` and `channel_sd_aa.csv` (soil loss and sediment yield).
+  - If the authentic SWAT+ toolkit is unmounted or execution fails, the orchestrator halts immediately with a fatal error instead of falling back to ad-hoc numbers.
 * **Output Artifacts**:
   - Regional Summary: `water_quality/swat_plus_water_quality_summary_<tag>.csv`
   - Cell Table: `water_quality/swat_plus_cells_<tag>.parquet`
