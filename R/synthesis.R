@@ -128,9 +128,15 @@ synthesize_act4cap_results <- function(model,
   }
 
   # Write to unified job directory
+  if (file.exists(synth_csv)) tryCatch(unlink(synth_csv, force = TRUE), error = function(e) NULL)
   fwrite(synth_dt, synth_csv)
+  tryCatch(Sys.chmod(synth_csv, mode = "0666", use_umask = FALSE), error = function(e) NULL)
   # Also write to central synthesis directory for instant multi-model access
-  tryCatch(fwrite(synth_dt, central_csv), error = function(e) NULL)
+  if (file.exists(central_csv)) tryCatch(unlink(central_csv, force = TRUE), error = function(e) NULL)
+  tryCatch({
+    fwrite(synth_dt, central_csv)
+    Sys.chmod(central_csv, mode = "0666", use_umask = FALSE)
+  }, error = function(e) NULL)
 
   cli_alert_success('Saved integrated multi-pillar synthesis CSV: {basename(synth_csv)} ({nrow(synth_dt)} records)')
 
@@ -220,13 +226,16 @@ synthesize_act4cap_results <- function(model,
     if (nrow(existing_idx) > 0 && "tag" %in% names(existing_idx)) {
       existing_idx <- existing_idx[tag != fn$tag]
       combined_idx <- rbind(existing_idx, index_row, fill = TRUE)
+      tryCatch(unlink(index_file, force = TRUE), error = function(e) NULL)
       fwrite(combined_idx, index_file)
     } else {
+      tryCatch(unlink(index_file, force = TRUE), error = function(e) NULL)
       fwrite(index_row, index_file)
     }
   } else {
     fwrite(index_row, index_file)
   }
+  tryCatch(Sys.chmod(index_file, mode = "0666", use_umask = FALSE), error = function(e) NULL)
   cli_alert_success('Updated central runs index: {basename(index_file)}')
 
   return(synth_csv)

@@ -201,9 +201,9 @@ run_act4cap_swat_postprocess <- function(model,
   }
 
   cli_alert_info('Ingesting authentic SWAT+ catchment water balance and nutrient tables from {basename(target_txtinout)}...')
-  wb_dt <- fread(wb_file)
-  nb_dt <- fread(nb_file)
-  ls_dt <- fread(ls_file)
+  wb_dt <- fread(wb_file, fill = TRUE)
+  nb_dt <- fread(nb_file, fill = TRUE)
+  ls_dt <- fread(ls_file, fill = TRUE)
 
   # Standardize SWAT+ table column names
   setnames(wb_dt, tolower(names(wb_dt)))
@@ -243,7 +243,9 @@ run_act4cap_swat_postprocess <- function(model,
   )]
   setcolorder(swat_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
 
+  if (file.exists(out_csv)) tryCatch(unlink(out_csv, force = TRUE), error = function(e) NULL)
   fwrite(swat_summary, out_csv)
+  tryCatch(Sys.chmod(out_csv, mode = "0666", use_umask = FALSE), error = function(e) NULL)
 
   # 6. Spatially explicit cell-level export (Parquet & GeoTIFF rasters)
   cell_parquet <- NULL
@@ -259,7 +261,9 @@ run_act4cap_swat_postprocess <- function(model,
     ), by = .(ns, Ns_reg, year)]
 
     cell_parquet <- target_cell_parquet
+    if (file.exists(cell_parquet)) tryCatch(unlink(cell_parquet, force = TRUE), error = function(e) NULL)
     write_cell_tabular_data(cell_swat, cell_parquet)
+    tryCatch(Sys.chmod(cell_parquet, mode = "0666", use_umask = FALSE), error = function(e) NULL)
     cli_alert_success('Saved spatially explicit cell-level parquet: {basename(cell_parquet)}')
 
     tifs <- tryCatch(
@@ -276,6 +280,7 @@ run_act4cap_swat_postprocess <- function(model,
     )
   }
 
+  if (file.exists(composite_rds)) tryCatch(unlink(composite_rds, force = TRUE), error = function(e) NULL)
   saveRDS(list(
     swat_summary = swat_summary,
     cell_summary = if (exists('cell_swat')) cell_swat else NULL,
@@ -294,6 +299,7 @@ run_act4cap_swat_postprocess <- function(model,
       postmodel_mode = postmodel_mode
     )
   ), composite_rds)
+  tryCatch(Sys.chmod(composite_rds, mode = "0666", use_umask = FALSE), error = function(e) NULL)
 
   cli_alert_success('Saved authentic SWAT+ water quality summary: {basename(out_csv)} ({nrow(swat_summary)} records)')
 

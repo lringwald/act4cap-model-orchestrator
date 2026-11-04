@@ -6,6 +6,7 @@
 # environment variable overrides, validates TASK, and invokes R/orchestrator.R.
 # =============================================================================
 set -euo pipefail
+umask 0000
 
 # --- help dispatch ---
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then

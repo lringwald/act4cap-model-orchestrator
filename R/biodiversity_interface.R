@@ -302,7 +302,9 @@ run_act4cap_biodiversity_postprocess <- function(model,
     downscale_file   = if (!is.null(downscale_outputs$lu_file)) basename(downscale_outputs$lu_file) else "none"
   )]
   setcolorder(bii_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
+  if (file.exists(bii_csv)) tryCatch(unlink(bii_csv, force = TRUE), error = function(e) NULL)
   fwrite(bii_summary, bii_csv)
+  tryCatch(Sys.chmod(bii_csv, mode = "0666", use_umask = FALSE), error = function(e) NULL)
   cli_alert_success('Saved Biodiversity Link BII: {basename(bii_csv)}')
 
   # 7. Aggregate cSAR16 Committed Extinctions & Intactness Summary
@@ -321,7 +323,9 @@ run_act4cap_biodiversity_postprocess <- function(model,
     downscale_file   = if (!is.null(downscale_outputs$lu_file)) basename(downscale_outputs$lu_file) else "none"
   )]
   setcolorder(csar_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
+  if (file.exists(csar_csv)) tryCatch(unlink(csar_csv, force = TRUE), error = function(e) NULL)
   fwrite(csar_summary, csar_csv)
+  tryCatch(Sys.chmod(csar_csv, mode = "0666", use_umask = FALSE), error = function(e) NULL)
   cli_alert_success('Saved Biodiversity Link cSAR: {basename(csar_csv)}')
 
   # 8. Spatially explicit cell-level export (Parquet & GeoTIFF rasters)
@@ -336,7 +340,9 @@ run_act4cap_biodiversity_postprocess <- function(model,
     ), by = .(ns, Ns_reg, year)]
 
     cell_parquet <- target_cell_parquet
+    if (file.exists(cell_parquet)) tryCatch(unlink(cell_parquet, force = TRUE), error = function(e) NULL)
     write_cell_tabular_data(cell_bio, cell_parquet)
+    tryCatch(Sys.chmod(cell_parquet, mode = "0666", use_umask = FALSE), error = function(e) NULL)
     cli_alert_success('Saved spatially explicit cell-level parquet: {basename(cell_parquet)}')
 
     tifs <- tryCatch(

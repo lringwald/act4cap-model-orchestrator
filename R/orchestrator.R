@@ -2,6 +2,7 @@
 # =============================================================================
 # R/orchestrator.R — Main workflow runner for Act4Cap Integrated Modelling
 # =============================================================================
+Sys.umask("0000")
 suppressPackageStartupMessages({
   library(cli)
   library(jsonlite)

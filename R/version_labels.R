@@ -114,13 +114,17 @@ construct_version_tag <- function(model,
 # --- IO helpers enforcing standard file formats -------------------------------
 write_cell_tabular_data <- function(dt, parquet_path) {
   dir.create(dirname(parquet_path), recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(parquet_path)) tryCatch(unlink(parquet_path, force = TRUE), error = function(e) NULL)
   if (requireNamespace("arrow", quietly = TRUE)) {
     arrow::write_parquet(as.data.frame(dt), parquet_path, compression = "snappy")
+    tryCatch(Sys.chmod(parquet_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
     return(parquet_path)
   }
   # Fallback to CSV if arrow is unavailable
   csv_path <- sub("\\.parquet$", ".csv", parquet_path)
+  if (file.exists(csv_path)) tryCatch(unlink(csv_path, force = TRUE), error = function(e) NULL)
   data.table::fwrite(dt, csv_path)
+  tryCatch(Sys.chmod(csv_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
   csv_path
 }
 
