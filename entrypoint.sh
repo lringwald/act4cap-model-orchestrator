@@ -92,6 +92,11 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
   fi
 fi
 
+# --- sync agent rulebooks if available ---
+if [ -f "tools/update_rules.sh" ]; then
+  bash tools/update_rules.sh 2>/dev/null || true
+fi
+
 # --- dispatch execution to R orchestrator ---
 echo ">>> Starting R orchestrator..."
 exec Rscript R/orchestrator.R "$@"

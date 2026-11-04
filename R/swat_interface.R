@@ -192,6 +192,14 @@ run_act4cap_swat_postprocess <- function(model,
     total_sediment_ktons  = round(sum(crp_area_km2 * 100 * sediment_yield_t_ha / 1000, na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
+  swat_summary[, `:=`(
+    model            = toupper(model),
+    scenario         = scenario,
+    macro_input_file = macro_out_name,
+    downscale_file   = if (!is.null(downscale_outputs$lu_file)) basename(downscale_outputs$lu_file) else "none"
+  )]
+  setcolorder(swat_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
+
   fwrite(swat_summary, out_csv)
 
   # 5. Spatially explicit cell-level export (Parquet & GeoTIFF rasters)

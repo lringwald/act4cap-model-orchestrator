@@ -128,13 +128,18 @@ synthesize_act4cap_results <- function(model,
     }
   }
 
+  downscale_path <- if (!is.null(downscale_res$lu_parquet)) downscale_res$lu_parquet else downscale_res$lu_file
+  downscale_name <- if (!is.null(downscale_path)) basename(downscale_path) else "none"
+
   if (nrow(synth_dt) == 0) {
     synth_dt <- data.table(model = toupper(model), scenario = scenario, status = 'no_post_models_run')
   } else {
     synth_dt[, model := toupper(model)]
     synth_dt[, scenario := scenario]
     synth_dt[, tag := fn$tag]
-    setcolorder(synth_dt, c('model', 'scenario', 'tag', 'Ns_reg', 'year'))
+    synth_dt[, macro_input_file := macro_out_name]
+    synth_dt[, downscale_file := downscale_name]
+    setcolorder(synth_dt, c('model', 'scenario', 'tag', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
   }
 
   # Write to unified job directory
@@ -149,7 +154,8 @@ synthesize_act4cap_results <- function(model,
     tag                  = fn$tag,
     model                = toupper(model),
     scenario             = scenario,
-    macro_output_vintage = macro_out_name,
+    macro_input_file     = macro_out_name,
+    downscale_file       = downscale_name,
     resolution           = resolution,
     execution_mode       = if (trial) "TRIAL" else "PRODUCTION",
     timestamp_utc        = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
@@ -174,7 +180,7 @@ synthesize_act4cap_results <- function(model,
         rasters_count = length(bio_res$rasters)
       ),
       downscaling = list(
-        lu_file       = if (!is.null(downscale_res$lu_parquet)) downscale_res$lu_parquet else downscale_res$lu_file
+        lu_file       = downscale_path
       )
     )
   )
@@ -185,6 +191,60 @@ synthesize_act4cap_results <- function(model,
       cli_alert_success('Saved run manifest: {basename(manifest_file)}')
     }
   }, error = function(e) NULL)
+
+  # 5. Generate human-readable RUN_PROVENANCE.md in job directory
+  prov_md <- file.path(fn$job_dir, "RUN_PROVENANCE.md")
+  prov_lines <- c(
+    sprintf("# Act4Cap Pipeline Run Provenance: %s", fn$tag),
+    "",
+    sprintf("- **Macro Model:** %s", toupper(model)),
+    sprintf("- **Scenario:** %s", scenario),
+    sprintf("- **Macro Input File:** `%s`", macro_out_name),
+    sprintf("- **Downscaled Land Use:** `%s`", downscale_name),
+    sprintf("- **Resolution:** %s", resolution),
+    sprintf("- **Execution Mode:** %s", if (trial) "TRIAL" else "PRODUCTION"),
+    sprintf("- **Run Date:** %s", if (!is.null(run_date) && nzchar(run_date)) run_date else format(Sys.Date(), "%Y%m%d")),
+    sprintf("- **Timestamp (UTC):** %s", format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")),
+    "",
+    "## Key Output Artifacts",
+    sprintf("- **Integrated Synthesis:** `synthesis/%s`", basename(synth_csv)),
+    if (!is.null(swat_res$summary_csv)) sprintf("- **SWAT+ Water Quality Summary:** `water_quality/%s`", basename(swat_res$summary_csv)) else NULL,
+    if (!is.null(swat_res$cell_parquet)) sprintf("- **SWAT+ Cell Data (Parquet):** `water_quality/%s`", basename(swat_res$cell_parquet)) else NULL,
+    if (!is.null(bio_res$bii_csv)) sprintf("- **Biodiversity Link BII:** `biodiversity/%s`", basename(bio_res$bii_csv)) else NULL,
+    if (!is.null(bio_res$csar_csv)) sprintf("- **Biodiversity Link cSAR:** `biodiversity/%s`", basename(bio_res$csar_csv)) else NULL,
+    if (!is.null(bio_res$summary_csv)) sprintf("- **Biodiversity Link MSA:** `biodiversity/%s`", basename(bio_res$summary_csv)) else NULL,
+    if (!is.null(bio_res$cell_parquet)) sprintf("- **Biodiversity Link Cell Data (Parquet):** `biodiversity/%s`", basename(bio_res$cell_parquet)) else NULL
+  )
+  prov_lines <- prov_lines[!vapply(prov_lines, is.null, logical(1))]
+  tryCatch(writeLines(unlist(prov_lines), prov_md), error = function(e) NULL)
+
+  # 6. Maintain cumulative central registry index (outputs/synthesis/runs_index.csv)
+  index_file <- file.path(central_dir, "runs_index.csv")
+  index_row <- data.table(
+    tag              = fn$tag,
+    model            = toupper(model),
+    scenario         = scenario,
+    macro_input_file = macro_out_name,
+    downscale_file   = downscale_name,
+    resolution       = resolution,
+    run_date         = if (!is.null(run_date) && nzchar(run_date)) run_date else format(Sys.Date(), "%Y%m%d"),
+    job_directory    = fn$tag,
+    synthesis_csv    = file.path("synthesis", basename(central_csv)),
+    timestamp_utc    = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+  )
+  if (file.exists(index_file)) {
+    existing_idx <- tryCatch(fread(index_file), error = function(e) data.table())
+    if (nrow(existing_idx) > 0 && "tag" %in% names(existing_idx)) {
+      existing_idx <- existing_idx[tag != fn$tag]
+      combined_idx <- rbind(existing_idx, index_row, fill = TRUE)
+      fwrite(combined_idx, index_file)
+    } else {
+      fwrite(index_row, index_file)
+    }
+  } else {
+    fwrite(index_row, index_file)
+  }
+  cli_alert_success('Updated central runs index: {basename(index_file)}')
 
   return(synth_csv)
 }

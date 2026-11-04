@@ -227,6 +227,13 @@ run_act4cap_biodiversity_postprocess <- function(model,
     grassland_km2       = round(sum(crp_area_km2[agmip_category == 'grassland'], na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
+  bii_summary[, `:=`(
+    model            = toupper(model),
+    scenario         = scenario,
+    macro_input_file = macro_out_name,
+    downscale_file   = if (!is.null(downscale_outputs$lu_file)) basename(downscale_outputs$lu_file) else "none"
+  )]
+  setcolorder(bii_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
   fwrite(bii_summary, bii_csv)
 
   # 4. Aggregate cSAR16 Extinction Risk & Habitat Intactness Summary
@@ -238,6 +245,13 @@ run_act4cap_biodiversity_postprocess <- function(model,
     transformed_land_km2   = round(sum(crp_area_km2[agmip_category %in% c('arable_cropland', 'built_up')], na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
+  csar_summary[, `:=`(
+    model            = toupper(model),
+    scenario         = scenario,
+    macro_input_file = macro_out_name,
+    downscale_file   = if (!is.null(downscale_outputs$lu_file)) basename(downscale_outputs$lu_file) else "none"
+  )]
+  setcolorder(csar_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
   fwrite(csar_summary, csar_csv)
 
   # 5. Aggregate MSA Summary Table
@@ -250,6 +264,13 @@ run_act4cap_biodiversity_postprocess <- function(model,
     grassland_km2        = round(sum(crp_area_km2[agmip_category == 'grassland'], na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
+  msa_summary[, `:=`(
+    model            = toupper(model),
+    scenario         = scenario,
+    macro_input_file = macro_out_name,
+    downscale_file   = if (!is.null(downscale_outputs$lu_file)) basename(downscale_outputs$lu_file) else "none"
+  )]
+  setcolorder(msa_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
   fwrite(msa_summary, msa_csv)
 
   # 6. Spatially explicit cell-level export (CSV & GeoTIFF rasters)

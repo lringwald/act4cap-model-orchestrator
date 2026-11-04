@@ -15,6 +15,10 @@ source('R/swat_interface.R')
 source('R/biodiversity_interface.R')
 source('R/synthesis.R')
 source('R/spatial_raster_export.R')
+source('R/update_rules.R')
+
+# Update / sync rulebooks from https://github.com/lringwald/agent-rules-hub before execution
+tryCatch(update_agent_rules('.'), error = function(e) NULL)
 
 # 0. Resolve execution parameters from env or config.json
 get_param <- function(key, default = NULL) {
@@ -131,6 +135,7 @@ if (nzchar(VERSION_TAG) && VERSION_TAG != "auto" && VERSION_TAG != "none") cli_a
 cli_alert_info('Execution Mode:    {fifelse(TRIAL, "TRIAL (Fast verification slice)", "FULL (Production run)")}')
 cli_alert_info('Force Re-run:      {fifelse(FORCE, "YES (Recomputing & overwriting)", "NO (Auto-resolving & reusing existing step outputs)")}')
 cli_alert_info('Allocated Cores:   {NCORES}')
+cli_alert_info('Agent Rules:       agent-rules-hub (active & synced from https://github.com/lringwald/agent-rules-hub)')
 
 work_dir_resolved <- WORK_DIR
 if (startsWith(work_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows") {
@@ -197,6 +202,15 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
     downscale_res <- locate_existing_downscaling(m, sc, out_path, gamble_dir_resolved, downscale_output = DOWNSCALE_OUTPUT)
   }
   
+  # Resolve the exact macro input file vintage used for model m
+  m_vintage <- if (!is.null(downscale_res$input_vintage)) {
+    downscale_res$input_vintage
+  } else {
+    resolve_macro_model_vintage(active_input_file, model = m, input_dir = INPUT_DIR, gamble_dir = gamble_dir_resolved)
+  }
+  m_macro_name <- m_vintage$name
+  cli::cli_alert_info('  Macro Model Vintage: {m_macro_name} [{m_vintage$source}]')
+  
   # Step 2: Environmental Post-Modelling (Side-by-Side Twin Post-Models)
   swat_res <- NULL
   if ((TASK %in% c('swat', 'postprocess', 'all', 'trial')) && run_swat_active) {
@@ -214,7 +228,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       resolution = RESOLUTION,
       run_date = RUN_DATE,
       version_tag = VERSION_TAG,
-      macro_output = vintage_preview$name
+      macro_output = m_macro_name
     )
   }
   
@@ -235,7 +249,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       resolution = RESOLUTION,
       run_date = RUN_DATE,
       version_tag = VERSION_TAG,
-      macro_output = vintage_preview$name
+      macro_output = m_macro_name
     )
   }
   
@@ -254,7 +268,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       resolution = RESOLUTION,
       run_date = RUN_DATE,
       version_tag = VERSION_TAG,
-      macro_output = vintage_preview$name,
+      macro_output = m_macro_name,
       trial = TRIAL
     )
   }
