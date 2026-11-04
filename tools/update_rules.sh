@@ -21,3 +21,4 @@ if [ -f ".rules-hub/install-rules.sh" ]; then
 else
   echo ">>> Note: .rules-hub/install-rules.sh not found; keeping current rules in .agents/rules."
 fi
+

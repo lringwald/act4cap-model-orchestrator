@@ -80,7 +80,7 @@
       "RUN_BIODIVERSITY": {
         "type": "string",
         "title": "Run Biodiversity Model (Biodiversity Link)",
-        "description": "Run Biodiversity Model (Biodiversity Link) -- Whether to run the Biodiversity Link ecological effects model (species richness, Mean Species Abundance MSA, habitat fragmentation, ecosystem intactness). Set to 1 for on, 0 for off.",
+        "description": "Run Biodiversity Model (Biodiversity Link) -- Whether to run the Biodiversity Link ecological effects model (Biodiversity Intactness Index BII, cSAR16 committed species extinctions and intactness). Set to 1 for on, 0 for off.",
         "default": "1",
         "enum": [
           "1",
@@ -188,7 +188,7 @@
       "BIODIVERSITY_MAPPING_FILE": {
         "type": "string",
         "title": "AgMIP to Biodiversity Link Mapping Table",
-        "description": "AgMIP to Biodiversity Link Mapping Table -- Path to CSV table defining the formal crosswalk between downscaled AgMIP land-use classes and IIASA Biodiversity Link categories (lc_type, lc_btc, lc_csar, bii_luclass, csar affinity, and msa).",
+        "description": "AgMIP to Biodiversity Link Mapping Table -- Path to CSV table defining the formal crosswalk between downscaled AgMIP land-use classes and IIASA Biodiversity Link categories (lc_type, lc_btc, lc_csar, bii_luclass_f, and bii_luclass_nf).",
         "default": "config/mapping_agmip_to_biodiversity_link.csv"
       },
       "POSTMODEL_MODE": {

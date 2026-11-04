@@ -20,3 +20,4 @@ update_agent_rules <- function(repo_dir = ".") {
     }, error = function(e) NULL)
   }
 }
+

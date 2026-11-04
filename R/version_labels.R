@@ -207,7 +207,6 @@ construct_act4cap_output_filenames <- function(model,
       dir_path      = bio_out_dir,
       bii_csv       = file.path(bio_out_dir, sprintf("biodiversity_link_bii_summary_%s.csv", tag)),
       csar_csv      = file.path(bio_out_dir, sprintf("biodiversity_link_csar_summary_%s.csv", tag)),
-      msa_csv       = file.path(bio_out_dir, sprintf("biodiversity_link_msa_summary_%s.csv", tag)),
       cell_parquet  = bio_cell_parquet,
       cell_file     = bio_cell_parquet,
       cell_csv      = bio_cell_parquet, # backwards compatible alias

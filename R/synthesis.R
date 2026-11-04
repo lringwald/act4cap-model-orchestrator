@@ -84,10 +84,6 @@ synthesize_act4cap_results <- function(model,
     fread(bio_res$csar_csv)
   } else data.table()
 
-  msa_dt <- if (!is.null(bio_res$summary_csv) && file.exists(bio_res$summary_csv)) {
-    fread(bio_res$summary_csv)
-  } else data.table()
-
   # 3. Combine multi-pillar tables
   synth_dt <- data.table()
 
@@ -107,24 +103,13 @@ synthesize_act4cap_results <- function(model,
   }
 
   if (nrow(csar_dt) > 0) {
-    keep_cols <- c('Ns_reg', 'year', 'csar_intactness_score', 'extinction_risk_index')
+    keep_cols <- c('Ns_reg', 'year', 'csar_intactness_score', 'committed_extinctions')
     keep_cols <- intersect(keep_cols, names(csar_dt))
     csar_sub <- csar_dt[, ..keep_cols]
     if (nrow(synth_dt) > 0) {
       synth_dt <- merge(synth_dt, csar_sub, by = c('Ns_reg', 'year'), all = TRUE)
     } else {
       synth_dt <- csar_sub
-    }
-  }
-
-  if (nrow(msa_dt) > 0 && !('msa_overall_index' %in% names(synth_dt))) {
-    keep_cols <- c('Ns_reg', 'year', 'msa_overall_index')
-    keep_cols <- intersect(keep_cols, names(msa_dt))
-    msa_sub <- msa_dt[, ..keep_cols]
-    if (nrow(synth_dt) > 0) {
-      synth_dt <- merge(synth_dt, msa_sub, by = c('Ns_reg', 'year'), all = TRUE)
-    } else {
-      synth_dt <- msa_sub
     }
   }
 
@@ -174,7 +159,6 @@ synthesize_act4cap_results <- function(model,
       biodiversity = list(
         bii_csv       = bio_res$bii_csv,
         csar_csv      = bio_res$csar_csv,
-        msa_csv       = bio_res$summary_csv,
         cells_parquet = if (!is.null(bio_res$cell_parquet)) bio_res$cell_parquet else bio_res$cell_csv,
         composite_rds = bio_res$composite_rds,
         rasters_count = length(bio_res$rasters)
@@ -212,7 +196,6 @@ synthesize_act4cap_results <- function(model,
     if (!is.null(swat_res$cell_parquet)) sprintf("- **SWAT+ Cell Data (Parquet):** `water_quality/%s`", basename(swat_res$cell_parquet)) else NULL,
     if (!is.null(bio_res$bii_csv)) sprintf("- **Biodiversity Link BII:** `biodiversity/%s`", basename(bio_res$bii_csv)) else NULL,
     if (!is.null(bio_res$csar_csv)) sprintf("- **Biodiversity Link cSAR:** `biodiversity/%s`", basename(bio_res$csar_csv)) else NULL,
-    if (!is.null(bio_res$summary_csv)) sprintf("- **Biodiversity Link MSA:** `biodiversity/%s`", basename(bio_res$summary_csv)) else NULL,
     if (!is.null(bio_res$cell_parquet)) sprintf("- **Biodiversity Link Cell Data (Parquet):** `biodiversity/%s`", basename(bio_res$cell_parquet)) else NULL
   )
   prov_lines <- prov_lines[!vapply(prov_lines, is.null, logical(1))]

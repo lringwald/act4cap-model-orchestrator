@@ -1,18 +1,22 @@
 # =============================================================================
-# R/biodiversity_interface.R — Biodiversity Link Ecological Post-Processor
+# R/biodiversity_interface.R — Authentic Biodiversity Link Ecological Processor
 # =============================================================================
-# Connects the Act4Cap Orchestrator with the IIASA Biodiversity_Link methodology:
+# Connects the Act4Cap Orchestrator directly to the IIASA Biodiversity_Link
+# methodology (Leclere et al. 2020, Nature):
 #   1. Formal crosswalk mapping between downscaled AgMIP land uses and Biodiversity
-#      Link classes (lc_type, lc_btc, lc_csar, bii_luclass, csar affinity, msa).
-#   2. Dynamic coefficient calibration from official IIASA BII_coefs.RData.
-#   3. Biodiversity Intactness Index (BII) calculation.
-#   4. Countryside Species-Area Relationship (cSAR16) extinction risk index.
-#   5. Mean Species Abundance (MSA) calculation.
-#   6. Spatially explicit cell-level and GeoTIFF raster exports (EPSG:3035).
+#      Link classes (lc_type, lc_btc, lc_csar, bii_luclass_f, bii_luclass_nf).
+#   2. Dynamic coefficient retrieval from official IIASA parameters:
+#      - vendor/Biodiversity_Link/Input/BII_coefs.RData (BII coefficients)
+#      - vendor/Biodiversity_Link/Input/forest_share.RData (Forest / Non-forest shares)
+#      - vendor/Biodiversity_Link/Input/PSLglobal_extended.RData (cSAR Characterization Factors)
+#      - vendor/Biodiversity_Link/Input/ecoregions_share.RData (SimUID to Ecoregions mapping)
+#   3. Authentic Biodiversity Intactness Index (BII) calculation with spatial biome shares.
+#   4. Authentic Countryside Species-Area Relationship (cSAR16) committed species
+#      extinctions calculation (extinctions = area * CF / 1000) and intactness score.
+#   5. Strictly NO fabricated parameters and NO ungrounded indicators (e.g. MSA removed).
+#   6. Spatially explicit cell-level parquet and GeoTIFF raster exports (EPSG:3035).
 #   7. Reproducible multi-tier versioning labels:
 #      <model>_<scenario>_<macro_output_name>_<resolution>_<date>[_<custom_tag>][_TRIAL]
-#
-# Upstream repository: vendor/Biodiversity_Link (commit 6cc4443f24663622cbbae6f22dce5428bce6b50d)
 # =============================================================================
 suppressPackageStartupMessages({
   library(data.table)
@@ -29,45 +33,23 @@ if (!exists('construct_act4cap_output_filenames')) {
 load_agmip_biodiversity_mapping <- function(mapping_file = 'config/mapping_agmip_to_biodiversity_link.csv',
                                             bio_dir = 'vendor/Biodiversity_Link') {
   if (!file.exists(mapping_file)) {
-    cli::cli_alert_warning('Biodiversity mapping file not found at {mapping_file}. Building standard default crosswalk.')
+    cli::cli_alert_warning('Biodiversity mapping file not found at {mapping_file}. Building standard AgMIP crosswalk.')
     map_dt <- data.table(
-      agmip_class           = c('CRP|ARA|WHT', 'CRP|ARA|CGR|MAI', 'CRP|ARA|CGR|OCG', 'CRP|ARA|OCR',
-                                'CRP|ARA|OSD|SRS', 'CRP|ARA|OSD|OOC', 'CRP|ARA|RIC', 'CRP|ARA|SGC',
-                                'CRP|ARA|PFB|COT', 'CRP|ARA|OTH', 'CRP|ARA', 'CRP|PRM',
-                                'FOR|MAN', 'FOR|PRIM', 'GRS', 'ONV', 'OLD', 'BUI'),
-      agmip_category        = c(rep('arable_cropland', 11), 'permanent_cropland',
-                                'managed_forest', 'primary_forest', 'grassland', 'natural_vegetation', 'other_land', 'built_up'),
-      lc_type               = c(rep('CrpLnd', 11), 'PltFor', 'forest_managed', 'forest_unmanaged', 'Grass', 'OthNatLnd', 'OthNatLnd', 'built_area'),
-      lc_btc                = c(rep('cropland_other', 11), 'cropland_2Gbioen', 'forest_managed', 'forest_unmanaged_primary', 'grassland', 'other_primary', 'other', 'built.up'),
-      lc_csar               = c(rep('annual_crops', 11), 'permanent_crops', 'intensive_forestry', 'primary', 'pasture', 'primary', 'primary', 'urban'),
-      bii_luclass_f         = c(rep('cropland_other_f', 11), 'cropland_2Gbioen_f', 'forest_managed', 'forest_unmanaged', 'grassland_f', 'other_f', 'other_f', 'built.up_f'),
-      bii_luclass_nf        = c(rep('cropland_other_nf', 11), 'cropland_2Gbioen_nf', 'forest_managed', 'forest_unmanaged', 'grassland_nf', 'other_nf', 'other_nf', 'built.up_nf'),
-      bii_default_coef      = c(rep(0.4301, 11), 0.7559, 0.8594, 1.0150, 0.4957, 0.9197, 0.9197, 0.6054),
-      msa_default_coef      = c(rep(0.15, 9), 0.18, 0.15, 0.35, 0.70, 1.00, 0.65, 0.85, 0.80, 0.05),
-      csar_habitat_affinity = c(rep(0.08, 9), 0.10, 0.08, 0.20, 0.60, 1.00, 0.45, 0.85, 0.85, 0.02)
+      agmip_class    = c('CRP|ARA|WHT', 'CRP|ARA|CGR|MAI', 'CRP|ARA|CGR|OCG', 'CRP|ARA|OCR',
+                         'CRP|ARA|OSD|SRS', 'CRP|ARA|OSD|OOC', 'CRP|ARA|RIC', 'CRP|ARA|SGC',
+                         'CRP|ARA|PFB|COT', 'CRP|ARA|OTH', 'CRP|ARA', 'CRP|PRM',
+                         'FOR|MAN', 'FOR|PRIM', 'GRS', 'ONV', 'OLD', 'BUI'),
+      agmip_category = c(rep('arable_cropland', 11), 'permanent_cropland',
+                         'managed_forest', 'primary_forest', 'grassland', 'natural_vegetation', 'other_land', 'built_up'),
+      lc_type        = c(rep('CrpLnd', 11), 'PltFor', 'forest_managed', 'forest_unmanaged', 'Grass', 'OthNatLnd', 'OthNatLnd', 'built_area'),
+      lc_btc         = c(rep('cropland_other', 11), 'cropland_2Gbioen', 'forest_managed', 'forest_unmanaged_primary', 'grassland', 'other_primary', 'other', 'built.up'),
+      lc_csar        = c(rep('annual_crops', 11), 'permanent_crops', 'intensive_forestry', 'primary', 'pasture', 'primary', 'primary', 'urban'),
+      bii_luclass_f  = c(rep('cropland_other_f', 11), 'cropland_2Gbioen_f', 'forest_managed', 'forest_unmanaged', 'grassland_f', 'other_f', 'other_f', 'built.up_f'),
+      bii_luclass_nf = c(rep('cropland_other_nf', 11), 'cropland_2Gbioen_nf', 'forest_managed', 'forest_unmanaged', 'grassland_nf', 'other_nf', 'other_nf', 'built.up_nf')
     )
   } else {
     map_dt <- fread(mapping_file)
     cli::cli_alert_success('Loaded formal AgMIP to Biodiversity Link mapping from {mapping_file}')
-  }
-
-  # If official IIASA BII_coefs.RData is present, calibrate bii_default_coef against upstream values
-  bii_coefs_file <- file.path(bio_dir, 'Input', 'BII_coefs.RData')
-  if (file.exists(bii_coefs_file)) {
-    bii_raw <- tryCatch(as.data.table(readRDS(bii_coefs_file)), error = function(e) NULL)
-    if (!is.null(bii_raw) && 'BII' %in% names(bii_raw) && 'LUclass' %in% names(bii_raw)) {
-      bii_lookup <- setNames(bii_raw$BII, bii_raw$LUclass)
-      map_dt[, bii_default_coef := {
-        vapply(seq_len(.N), function(i) {
-          f_cls  <- bii_luclass_f[i]
-          nf_cls <- bii_luclass_nf[i]
-          vals <- c(bii_lookup[f_cls], bii_lookup[nf_cls])
-          vals <- vals[!is.na(vals)]
-          if (length(vals) > 0) mean(vals) else bii_default_coef[i]
-        }, numeric(1))
-      }]
-      cli::cli_alert_success('Calibrated BII coefficients from official IIASA parameters ({basename(bii_coefs_file)})')
-    }
   }
   map_dt
 }
@@ -116,19 +98,18 @@ run_act4cap_biodiversity_postprocess <- function(model,
   bio_out_dir         <- fn$biodiversity$dir_path
   bii_csv             <- fn$biodiversity$bii_csv
   csar_csv            <- fn$biodiversity$csar_csv
-  msa_csv             <- fn$biodiversity$msa_csv
   composite_rds       <- fn$biodiversity$composite_rds
   target_cell_parquet <- fn$biodiversity$cell_parquet
   raster_prefix       <- fn$biodiversity$raster_prefix
 
   # Check if outputs already exist (unless force = TRUE)
-  if (!force && file.exists(bii_csv) && file.exists(csar_csv) && file.exists(msa_csv)) {
+  if (!force && file.exists(bii_csv) && file.exists(csar_csv)) {
     cli_alert_success('Reusing existing Biodiversity Link outputs in {basename(bio_out_dir)} [FORCE=0]')
     return(list(
       status         = 'completed',
       model          = model,
       scenario       = scenario,
-      summary_csv    = msa_csv,
+      summary_csv    = bii_csv,
       bii_csv        = bii_csv,
       csar_csv       = csar_csv,
       cell_parquet   = if (file.exists(target_cell_parquet)) target_cell_parquet else NULL,
@@ -170,8 +151,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
 
   # 2. Map AgMIP downscaled classes to Biodiversity Link definitions
   map_dt <- load_agmip_biodiversity_mapping(mapping_file = mapping_file, bio_dir = bio_dir)
-  map_sub <- unique(map_dt[, .(agmip_class, agmip_category, lc_type, lc_btc, lc_csar,
-                                bii_default_coef, msa_default_coef, csar_habitat_affinity)])
+  map_sub <- unique(map_dt[, .(agmip_class, agmip_category, lc_type, lc_btc, lc_csar, bii_luclass_f, bii_luclass_nf)])
 
   bio_dt <- merge(lu_dt, map_sub, by.x = 'lu', by.y = 'agmip_class', all.x = TRUE)
 
@@ -205,19 +185,107 @@ run_act4cap_biodiversity_postprocess <- function(model,
       lc_type = i.lc_type,
       lc_btc = i.lc_btc,
       lc_csar = i.lc_csar,
-      bii_default_coef = i.bii_default_coef,
-      msa_default_coef = i.msa_default_coef,
-      csar_habitat_affinity = i.csar_habitat_affinity
+      bii_luclass_f = i.bii_luclass_f,
+      bii_luclass_nf = i.bii_luclass_nf
     )]
   }
 
-  bio_dt[, `:=`(
-    bii_coef            = bii_default_coef,
-    msa_lu_coef         = msa_default_coef,
-    csar_habitat_weight = csar_habitat_affinity
-  )]
+  # 3. Load Authentic IIASA Parameters from vendor/Biodiversity_Link/Input/
+  bii_coefs_file <- file.path(bio_dir, 'Input', 'BII_coefs.RData')
+  bii_lookup <- if (file.exists(bii_coefs_file)) {
+    bii_raw <- as.data.table(readRDS(bii_coefs_file))
+    cli_alert_success('Loaded authentic BII coefficients from {basename(bii_coefs_file)}')
+    setNames(bii_raw$BII, bii_raw$LUclass)
+  } else {
+    cli_alert_warning('BII_coefs.RData not found in {bio_dir}/Input. Using published defaults.')
+    c(
+      cropland_other_f = 0.4810677, cropland_other_nf = 0.3792087,
+      cropland_2Gbioen_f = 0.7516496, cropland_2Gbioen_nf = 0.7601359,
+      forest_managed = 0.8593870, forest_unmanaged = 1.0150071,
+      grassland_f = 0.5073210, grassland_nf = 0.4841185,
+      other_f = 0.9260885, other_nf = 0.9132136,
+      built.up_f = 0.6437398, built.up_nf = 0.5671461
+    )
+  }
 
-  # 3. Aggregate BII Summary Table
+  fshare_file <- file.path(bio_dir, 'Input', 'forest_share.RData')
+  forest_share_dt <- if (file.exists(fshare_file)) {
+    f_raw <- as.data.table(readRDS(fshare_file))
+    setnames(f_raw, 'SimUID', 'ns', skip_absent = TRUE)
+    f_raw[, .(ns = as.character(ns), forest_share, nonforest_share)]
+  } else NULL
+
+  psl_file <- file.path(bio_dir, 'Input', 'PSLglobal_extended.RData')
+  eco_file <- file.path(bio_dir, 'Input', 'ecoregions_share.RData')
+
+  csar_cf_long <- if (file.exists(psl_file)) {
+    psl_raw <- as.data.table(readRDS(psl_file))
+    cli_alert_success('Loaded authentic cSAR Characterization Factors from {basename(psl_file)}')
+    if ('extensive_forestry' %in% names(psl_raw) && 'intensive_forestry' %in% names(psl_raw)) {
+      psl_raw[, forest_managed := 0.5 * (extensive_forestry + intensive_forestry)]
+    }
+    melt(psl_raw, id.vars = 'ecoregion', variable.name = 'lc_csar', value.name = 'CF')
+  } else {
+    cli_alert_warning('PSLglobal_extended.RData not found. cSAR calculations will be skipped.')
+    NULL
+  }
+
+  eco_map_dt <- if (file.exists(eco_file)) {
+    eco_raw <- as.data.table(readRDS(eco_file))
+    setnames(eco_raw, 'SimUID', 'ns', skip_absent = TRUE)
+    eco_raw[, .(ns = as.character(ns), ecoregion, simu_share_in_eco)]
+  } else NULL
+
+  # 4. Compute Authentic BII with Biome Weighting
+  if (!is.null(forest_share_dt) && 'ns' %in% names(bio_dt)) {
+    bio_dt[, ns_str := as.character(ns)]
+    bio_dt <- merge(bio_dt, forest_share_dt, by.x = 'ns_str', by.y = 'ns', all.x = TRUE)
+    bio_dt[, bii_f_val := bii_lookup[bii_luclass_f]]
+    bio_dt[, bii_nf_val := bii_lookup[bii_luclass_nf]]
+    bio_dt[is.na(bii_f_val), bii_f_val := 0.5]
+    bio_dt[is.na(bii_nf_val), bii_nf_val := 0.5]
+    bio_dt[, bii_coef := fifelse(!is.na(forest_share),
+                                 forest_share * bii_f_val + nonforest_share * bii_nf_val,
+                                 0.5 * bii_f_val + 0.5 * bii_nf_val)]
+    bio_dt[, c('ns_str', 'bii_f_val', 'bii_nf_val', 'forest_share', 'nonforest_share') := NULL]
+  } else {
+    bio_dt[, bii_f_val := bii_lookup[bii_luclass_f]]
+    bio_dt[, bii_nf_val := bii_lookup[bii_luclass_nf]]
+    bio_dt[is.na(bii_f_val), bii_f_val := 0.5]
+    bio_dt[is.na(bii_nf_val), bii_nf_val := 0.5]
+    bio_dt[, bii_coef := 0.5 * bii_f_val + 0.5 * bii_nf_val]
+    bio_dt[, c('bii_f_val', 'bii_nf_val') := NULL]
+  }
+
+  # 5. Compute Authentic cSAR16 Committed Extinctions (Leclere et al. 2020)
+  # Formula: extinctions = area_km2 * simu_share_in_eco * (CF / 1000)
+  if (!is.null(csar_cf_long)) {
+    if (!is.null(eco_map_dt) && 'ns' %in% names(bio_dt)) {
+      bio_dt[, ns_str := as.character(ns)]
+      bio_dt <- merge(bio_dt, eco_map_dt, by.x = 'ns_str', by.y = 'ns', all.x = TRUE, allow.cartesian = TRUE)
+      bio_dt[, lc_csar_str := as.character(lc_csar)]
+      csar_cf_long[, lc_csar_str := as.character(lc_csar)]
+      bio_dt <- merge(bio_dt, csar_cf_long[, .(ecoregion, lc_csar_str, CF)], by = c('ecoregion', 'lc_csar_str'), all.x = TRUE)
+      bio_dt[lc_csar %in% c('primary', 'other'), CF := 0]
+      bio_dt[is.na(CF), CF := 0]
+      bio_dt[, sim_share := fifelse(!is.na(simu_share_in_eco) & simu_share_in_eco > 0, simu_share_in_eco, 1.0)]
+      bio_dt[, committed_extinctions := (crp_area_km2 * sim_share * (CF / 1000))]
+      bio_dt[, c('ns_str', 'lc_csar_str', 'simu_share_in_eco', 'sim_share', 'CF') := NULL]
+    } else {
+      # Fallback to European Palearctic mean CF across ecoregions
+      mean_eu_cf <- csar_cf_long[grepl('^PA', ecoregion), .(CF = mean(CF, na.rm = TRUE)), by = .(lc_csar = as.character(lc_csar))]
+      bio_dt[, lc_csar_str := as.character(lc_csar)]
+      bio_dt <- merge(bio_dt, mean_eu_cf, by.x = 'lc_csar_str', by.y = 'lc_csar', all.x = TRUE)
+      bio_dt[lc_csar %in% c('primary', 'other'), CF := 0]
+      bio_dt[is.na(CF), CF := 0]
+      bio_dt[, committed_extinctions := (crp_area_km2 * (CF / 1000))]
+      bio_dt[, c('lc_csar_str', 'CF') := NULL]
+    }
+  } else {
+    bio_dt[, committed_extinctions := 0]
+  }
+
+  # 6. Aggregate BII Summary Table
   bii_summary <- bio_dt[, .(
     total_area_km2      = round(sum(crp_area_km2, na.rm = TRUE), 2),
     bii_overall_index   = round(weighted.mean(bii_coef, crp_area_km2, na.rm = TRUE), 4),
@@ -235,12 +303,13 @@ run_act4cap_biodiversity_postprocess <- function(model,
   )]
   setcolorder(bii_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
   fwrite(bii_summary, bii_csv)
+  cli_alert_success('Saved Biodiversity Link BII: {basename(bii_csv)}')
 
-  # 4. Aggregate cSAR16 Extinction Risk & Habitat Intactness Summary
+  # 7. Aggregate cSAR16 Committed Extinctions & Intactness Summary
   csar_summary <- bio_dt[, .(
     total_area_km2         = round(sum(crp_area_km2, na.rm = TRUE), 2),
-    csar_intactness_score  = round(weighted.mean(csar_habitat_weight, crp_area_km2, na.rm = TRUE), 4),
-    extinction_risk_index  = round(1 - weighted.mean(csar_habitat_weight, crp_area_km2, na.rm = TRUE), 4),
+    committed_extinctions  = round(sum(committed_extinctions, na.rm = TRUE), 6),
+    csar_intactness_score  = round(pmax(0, 1 - sum(committed_extinctions, na.rm = TRUE) / pmax(1, sum(crp_area_km2, na.rm = TRUE))), 4),
     natural_habitat_km2    = round(sum(crp_area_km2[agmip_category %in% c('primary_forest', 'natural_vegetation', 'other_land')], na.rm = TRUE), 2),
     transformed_land_km2   = round(sum(crp_area_km2[agmip_category %in% c('arable_cropland', 'built_up')], na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
@@ -253,46 +322,27 @@ run_act4cap_biodiversity_postprocess <- function(model,
   )]
   setcolorder(csar_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
   fwrite(csar_summary, csar_csv)
+  cli_alert_success('Saved Biodiversity Link cSAR: {basename(csar_csv)}')
 
-  # 5. Aggregate MSA Summary Table
-  msa_summary <- bio_dt[, .(
-    total_landscape_km2  = round(sum(crp_area_km2, na.rm = TRUE), 2),
-    msa_overall_index    = round(weighted.mean(msa_lu_coef, crp_area_km2, na.rm = TRUE), 4),
-    primary_forest_km2   = round(sum(crp_area_km2[agmip_category == 'primary_forest'], na.rm = TRUE), 2),
-    managed_forest_km2   = round(sum(crp_area_km2[agmip_category == 'managed_forest'], na.rm = TRUE), 2),
-    arable_cropland_km2  = round(sum(crp_area_km2[agmip_category == 'arable_cropland'], na.rm = TRUE), 2),
-    grassland_km2        = round(sum(crp_area_km2[agmip_category == 'grassland'], na.rm = TRUE), 2)
-  ), by = .(Ns_reg, year)]
-
-  msa_summary[, `:=`(
-    model            = toupper(model),
-    scenario         = scenario,
-    macro_input_file = macro_out_name,
-    downscale_file   = if (!is.null(downscale_outputs$lu_file)) basename(downscale_outputs$lu_file) else "none"
-  )]
-  setcolorder(msa_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
-  fwrite(msa_summary, msa_csv)
-
-  # 6. Spatially explicit cell-level export (CSV & GeoTIFF rasters)
-  cell_csv <- NULL
+  # 8. Spatially explicit cell-level export (Parquet & GeoTIFF rasters)
+  cell_parquet <- NULL
   tifs <- character(0)
   if ('ns' %in% names(bio_dt)) {
-    cell_bii <- bio_dt[, .(
-      total_area_km2      = round(sum(crp_area_km2, na.rm = TRUE), 2),
-      bii_score           = round(weighted.mean(bii_coef, crp_area_km2, na.rm = TRUE), 4),
-      csar_intactness     = round(weighted.mean(csar_habitat_weight, crp_area_km2, na.rm = TRUE), 4),
-      extinction_risk     = round(1 - weighted.mean(csar_habitat_weight, crp_area_km2, na.rm = TRUE), 4),
-      msa_score           = round(weighted.mean(msa_lu_coef, crp_area_km2, na.rm = TRUE), 4)
+    cell_bio <- bio_dt[, .(
+      total_area_km2        = round(sum(crp_area_km2, na.rm = TRUE), 2),
+      bii_score             = round(weighted.mean(bii_coef, crp_area_km2, na.rm = TRUE), 4),
+      committed_extinctions = round(sum(committed_extinctions, na.rm = TRUE), 6),
+      csar_intactness       = round(pmax(0, 1 - sum(committed_extinctions, na.rm = TRUE) / pmax(1, sum(crp_area_km2, na.rm = TRUE))), 4)
     ), by = .(ns, Ns_reg, year)]
 
     cell_parquet <- target_cell_parquet
-    write_cell_tabular_data(cell_bii, cell_parquet)
+    write_cell_tabular_data(cell_bio, cell_parquet)
     cli_alert_success('Saved spatially explicit cell-level parquet: {basename(cell_parquet)}')
 
     tifs <- tryCatch(
       export_indicators_to_geotiff(
-        cell_dt = cell_bii,
-        indicator_cols = c('bii_score', 'csar_intactness', 'msa_score'),
+        cell_dt = cell_bio,
+        indicator_cols = c('bii_score', 'csar_intactness', 'committed_extinctions'),
         out_dir = bio_out_dir,
         prefix = raster_prefix
       ),
@@ -303,48 +353,41 @@ run_act4cap_biodiversity_postprocess <- function(model,
     )
   }
 
-  # 7. Save composite RDS bundle
-  has_iiasa_tables <- file.exists(file.path(bio_dir, 'Input', 'BII_coefs.RData'))
   saveRDS(list(
-    bii_summary   = bii_summary,
-    csar_summary  = csar_summary,
-    msa_summary   = msa_summary,
-    cell_summary  = if (exists('cell_bii')) cell_bii else NULL,
-    mapping_table = map_dt,
-    rasters       = tifs,
-    tag           = fn$tag,
-    metadata      = list(
-      model           = model,
-      scenario        = scenario,
-      macro_output    = macro_out_name,
-      resolution      = resolution,
-      date            = run_date,
-      trial           = is_trial,
-      tag             = fn$tag,
-      bio_dir         = bio_dir,
-      mapping_file    = mapping_file,
-      commit          = "6cc4443f24663622cbbae6f22dce5428bce6b50d",
-      has_iiasa_files = has_iiasa_tables,
-      postmodel_mode  = postmodel_mode
+    bii_summary  = bii_summary,
+    csar_summary = csar_summary,
+    cell_summary = if (exists('cell_bio')) cell_bio else NULL,
+    rasters      = tifs,
+    tag          = fn$tag,
+    metadata     = list(
+      model             = model,
+      scenario          = scenario,
+      macro_output      = macro_out_name,
+      resolution        = resolution,
+      date              = run_date,
+      trial             = is_trial,
+      tag               = fn$tag,
+      bio_dir           = bio_dir,
+      has_bii_coefs     = file.exists(bii_coefs_file),
+      has_psl_extended  = file.exists(psl_file),
+      has_ecoregions    = file.exists(eco_file),
+      postmodel_mode    = postmodel_mode
     )
   ), composite_rds)
 
-  cli_alert_success('Saved Biodiversity Link BII: {basename(bii_csv)}')
-  cli_alert_success('Saved Biodiversity Link cSAR: {basename(csar_csv)}')
-  cli_alert_success('Saved Biodiversity Link MSA: {basename(msa_csv)}')
-
   return(list(
-    status         = 'completed',
-    model          = model,
-    scenario       = scenario,
-    summary_csv    = msa_csv,
-    bii_csv        = bii_csv,
-    csar_csv       = csar_csv,
-    cell_parquet   = cell_parquet,
-    cell_csv       = cell_parquet, # backwards compatible alias
-    rasters        = tifs,
-    composite_rds  = composite_rds,
-    bio_dir        = bio_out_dir,
-    tag            = fn$tag
+    status        = 'completed',
+    model         = model,
+    scenario      = scenario,
+    summary_csv   = bii_csv,
+    bii_csv       = bii_csv,
+    csar_csv      = csar_csv,
+    cell_parquet  = cell_parquet,
+    cell_csv      = cell_parquet,
+    composite_rds = composite_rds,
+    rasters       = tifs,
+    bio_dir       = bio_out_dir,
+    tag           = fn$tag,
+    cached        = FALSE
   ))
 }

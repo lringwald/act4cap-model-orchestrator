@@ -31,7 +31,7 @@ flowchart TD
         
         LU --> BL[Post-Model 2B: Biodiversity Link]
         INP --> BL
-        BL --> BD[BII Intactness, cSAR16 Habitat Risk & MSA]
+        BL --> BD[BII Intactness & cSAR16 Committed Extinctions]
     end
 
     subgraph Step 3: Synthesis & Reporting ["Step 3: Integrated Indicator Synthesis"]
@@ -56,21 +56,19 @@ flowchart TD
    - Translates downscaled land cover and crop fertilizer application into Hydrological Response Units (HRUs).
    - Simulates hydrological water yield (million m³), surface runoff coefficient, soil erosion sediment yield (ktons), and nitrogen/phosphorus leaching (tons) across European river basins.
    - Supports both `tentative` proxy-routing and native cluster simulation (`POSTMODEL_MODE`).
-   - Generates cell-level summaries (`swat_plus_cells_<tag>.csv`) and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035) for annual water yield, surface runoff, $N$-leaching risk, $P$-runoff risk, and sediment yield.
+   - Generates cell-level summaries (`swat_plus_cells_<tag>.parquet`) and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035) for annual water yield, surface runoff, $N$-leaching risk, $P$-runoff risk, and sediment yield.
 
 3. **Biodiversity Link Post-Processor (`biodiversity`)**:
-   - Implements the IIASA **Biodiversity_Link** methodology ([GitHub commit `6cc4443f24663622cbbae6f22dce5428bce6b50d`](https://github.com/iiasa/Biodiversity_Link/tree/6cc4443f24663622cbbae6f22dce5428bce6b50d)).
-   - **Formal AgMIP-to-Biodiversity Mapping**: Uses [`config/mapping_agmip_to_biodiversity_link.csv`](file:///g:/My%20Drive/R/act4cap-orchestrator/config/mapping_agmip_to_biodiversity_link.csv) (configurable via the `BIODIVERSITY_MAPPING_FILE` knob) to provide a rigorous, transparent crosswalk between all downscaled AgMIP land-use classes and IIASA Biodiversity Link categories:
+   - Implements the authentic IIASA **Biodiversity_Link** methodology from Leclère et al. (2020, *Nature*).
+   - **Formal AgMIP-to-Biodiversity Mapping**: Uses [`config/mapping_agmip_to_biodiversity_link.csv`](file:///g:/My%20Drive/R/act4cap-orchestrator/config/mapping_agmip_to_biodiversity_link.csv) to provide an unambiguous class crosswalk between downscaled AgMIP land-use codes and IIASA Biodiversity Link categories:
      - `lc_type`: Primary land cover category (`CrpLnd`, `PltFor`, `forest_managed`, `forest_unmanaged`, `Grass`, `OthNatLnd`, `built_area`).
      - `lc_btc`: BTC category (`cropland_other`, `cropland_2Gbioen`, `forest_managed`, `forest_unmanaged_primary`, `grassland`, `other_primary`, `other`, `built.up`).
      - `lc_csar`: Countryside Species-Area Relationship category (`annual_crops`, `permanent_crops`, `intensive_forestry`, `primary`, `pasture`, `urban`).
-     - `bii_luclass_f` / `bii_luclass_nf`: Forest vs. non-forest biome coefficients dynamically calibrated against official IIASA `vendor/Biodiversity_Link/Input/BII_coefs.RData`.
-     - `msa_default_coef` & `csar_habitat_affinity`: Calibrated indicator weights across agricultural and forest management gradients.
-   - Evaluates three complementary ecological integrity metrics:
-     - **Biodiversity Intactness Index (BII)**: Calibrated against IIASA `BII_coefs.RData` and `BTC_LC_MAP.RData` across unmanaged primary forest, managed forest, extensive grassland, permanent bioenergy crops, and arable crops.
-     - **Countryside Species-Area Relationship (cSAR16)**: Ecoregional extinction risk and habitat intactness index based on transformed vs. natural habitats.
-     - **Mean Species Abundance (MSA)**: Landscape-level mean species abundance.
-   - Generates cell-level summaries (`biodiversity_link_cells_<tag>.csv`), composite multi-metric RDS artifacts (`mapping_table` embedded), regional tabular summaries, and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035) for `bii_score`, `csar_intactness`, and `msa_score`.
+     - `bii_luclass_f` / `bii_luclass_nf`: Forest vs. non-forest biome coefficients sourced from official IIASA `vendor/Biodiversity_Link/Input/BII_coefs.RData`.
+   - Sourced and evaluated directly from official IIASA parameter sets:
+     - **Biodiversity Intactness Index (BII)**: Calibrated against IIASA `BII_coefs.RData` and spatially weighted by `forest_share.RData`.
+     - **Countryside Species-Area Relationship (cSAR16)**: Evaluates committed global species extinctions ($\text{extinctions} = \text{area} \times CF / 1000$) and intactness scores ($1 - \text{extinctions}$) across terrestrial ecoregions using authentic Characterization Factors from `PSLglobal_extended.RData` and `ecoregions_share.RData`.
+   - Generates cell-level summaries (`biodiversity_link_cells_<tag>.parquet`), composite multi-metric RDS artifacts, regional tabular summaries, and spatially explicit GeoTIFF rasters (`.tif`, EPSG:3035) for `bii_score`, `csar_intactness`, and `committed_extinctions`.
 
 4. **Multi-Pillar Synthesis (`postprocess` / `all`)**:
    - Merges SWAT+ catchment metrics and Biodiversity Link indicators into a unified multi-pillar indicator CSV dataset: `act4cap_integrated_synthesis_<tag>.csv`.
@@ -81,7 +79,7 @@ To balance cross-software human accessibility with big-data performance and disk
 - **Regional / Policy Aggregates (`.csv`)**:
   - Regional summaries aggregated by NUTS2 / country code (`Ns_reg`) and simulation year (`year`) are stored as standard CSV files (`.csv`).
   - These files are compact (~100–300 rows) and directly openable in spreadsheet applications (Excel, LibreOffice) and business intelligence tools.
-  - Examples: `swat_plus_water_quality_summary_<tag>.csv`, `biodiversity_link_bii_summary_<tag>.csv`, `biodiversity_link_csar_summary_<tag>.csv`, `biodiversity_link_msa_summary_<tag>.csv`, and `act4cap_integrated_synthesis_<tag>.csv`.
+  - Examples: `swat_plus_water_quality_summary_<tag>.csv`, `biodiversity_link_bii_summary_<tag>.csv`, `biodiversity_link_csar_summary_<tag>.csv`, and `act4cap_integrated_synthesis_<tag>.csv`.
 - **Pixel / Cell-Level Spatial Tables (`.parquet`)**:
   - Cell-level spatial tables containing 10km grid cell identifiers (`ns`), NUTS units, and detailed biophysical/hydrological/ecological indicators strictly enforce the **Apache Parquet standard** (`.parquet`) with Snappy compression via the `arrow` engine.
   - Parquet reduces file sizes by ~80% compared to uncompressed CSVs, preserves strict column datatypes, and accelerates loading into R/Python by ~10x.
@@ -101,7 +99,7 @@ $$\text{tag} = \langle\text{model}\rangle\_\langle\text{scenario}\rangle\_\langl
 
 ### Label Components:
 1. **Macro Model & Scenario**: Identifies the economic driver (e.g. `globiom_base`, `capri_ndc`).
-2. **Macro Model Output Name**: Stem of the source macro vintage (e.g. `20260916_compr_scens_merge` or `AgMIP_GLOBIOM_20261001`).
+2. **Macro Model Output Name**: Stem of the source macro vintage (e.g. `20261021_GLOBIOM_comprehensive`, `20260916_compr_scens_merge`).
 3. **Downscale Resolution**: Spatial resolution of the simulation units (e.g. `10km`, `5km`, `2km`).
 4. **Date Stamp**: Execution date in `YYYYMMDD` format (configurable via `RUN_DATE`, defaults to current date).
 5. **Custom Version Tag**: Optional user identifier appended via `VERSION_TAG` (e.g. `v1`, `deliv3`).
@@ -113,8 +111,9 @@ All analytical outputs for a given run are unified into a self-contained, reprod
 
 ```
 outputs/
-├── <tag>/                                                 # e.g. globiom_base_20260916_compr_scens_merge_10km_20261103
+├── <tag>/                                                 # e.g. globiom_base_20261021_GLOBIOM_comprehensive_10km_20261104
 │   ├── manifest.json                                      # Run metadata, parameters & artifact inventory
+│   ├── RUN_PROVENANCE.md                                  # Human-readable summary of inputs, sources & artifacts
 │   │
 │   ├── synthesis/                                         # Unified cross-pillar outputs
 │   │   └── act4cap_integrated_synthesis_<tag>.csv
@@ -132,19 +131,19 @@ outputs/
 │   ├── biodiversity/                                      # Biodiversity Link ecological outputs
 │   │   ├── biodiversity_link_bii_summary_<tag>.csv        # Regional BII summary (.csv)
 │   │   ├── biodiversity_link_csar_summary_<tag>.csv       # Regional cSAR summary (.csv)
-│   │   ├── biodiversity_link_msa_summary_<tag>.csv        # Regional MSA summary (.csv)
 │   │   ├── biodiversity_link_cells_<tag>.parquet          # 10km grid cell metrics (.parquet)
 │   │   ├── biodiversity_link_composite_<tag>.rds
 │   │   └── rasters/                                       # Spatially explicit GeoTIFFs (EPSG:3035)
 │   │       ├── biodiversity_<tag>_bii_score_<year>.tif
 │   │       ├── biodiversity_<tag>_csar_intactness_<year>.tif
-│   │       └── biodiversity_<tag>_msa_score_<year>.tif
+│   │       └── biodiversity_<tag>_committed_extinctions_<year>.tif
 │   │
 │   └── downscaling/                                       # Mediated 10km AgMIP land use & allocation
 │       └── DS_ACT4CAP_AgMIP_<tag>_lu_<scenario>.parquet   # 10km land use (.parquet)
 │
 └── synthesis/                                             # Central index of all scenario syntheses
-    └── act4cap_integrated_synthesis_<tag>.csv
+    ├── act4cap_integrated_synthesis_<tag>.csv
+    └── runs_index.csv                                     # Cumulative registry of all historical runs
 
 ## Accelerator Drive & Cluster Mount Parity
 
