@@ -33,7 +33,7 @@
         "title": "Macro Model Input File / Vintage",
         "description": "Macro Model Input File / Vintage -- Specific macro-economic data vintage to process from the model outputs folder. Select 'latest' to automatically detect the newest date vintage available, or choose a specific vintage from the dropdown menu.",
         "default": "latest",
-        "enum": ["latest", "20260916_compr_scens_merge.csv", "20260319_MAGNET_AgMIP_accelerator.csv", "20260305_MAGNET_AgMIP.csv", "20260221_MAGNET_AgMIP_accelerator.csv", "20251218_MAGNET_AgMIP_accelerator.csv", "CAPRI_act4cap27_results_20260518.csv", "CAPRI_act4cap27_results_20260415.csv", "CAPRI_act4cap27_results_20260413.csv"]
+        "enum": ["latest", "20261021_GLOBIOM_comprehensive.csv", "20260916_compr_scens_merge.csv", "20260319_MAGNET_AgMIP_accelerator.csv", "20260305_MAGNET_AgMIP.csv", "20260221_MAGNET_AgMIP_accelerator.csv", "20251218_MAGNET_AgMIP_accelerator.csv", "CAPRI_act4cap27_results_20260518.csv", "CAPRI_act4cap27_results_20260415.csv", "CAPRI_act4cap27_results_20260413.csv"]
       },
       "CUSTOM_INPUT_FILE": {
         "type": "string",
