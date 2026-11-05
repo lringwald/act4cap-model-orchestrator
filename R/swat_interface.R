@@ -149,22 +149,37 @@ run_act4cap_swat_postprocess <- function(model,
   run_py <- file.path(swat_dir, '0_run_pipeline.py')
   if (!file.exists(run_py)) run_py <- file.path(swat_dir, '1_merged_script.py')
 
-  Sys.setenv(ACT4CAP_INPUT_ROOT  = out_dir)
-  Sys.setenv(ACT4CAP_ROOT        = swat_out_dir)
-  Sys.setenv(ACT4CAP_SWAT_DIR    = swat_dir)
-  Sys.setenv(ACT4CAP_MODEL       = tolower(model))
-  Sys.setenv(ACT4CAP_SCENARIO    = tolower(scenario))
-  Sys.setenv(ACT4CAP_LU_FILE     = lu_file)
-  Sys.setenv(ACT4CAP_TRIAL       = fifelse(is_trial, "1", "0"))
-  Sys.setenv(ACT4CAP_CORES       = as.character(ncores))
-  Sys.setenv(PYTHONPATH          = paste(unique(c(swat_dir, Sys.getenv("PYTHONPATH"))), collapse = .Platform$path.sep))
+  swat_input_root <- if (!is.null(downscale_outputs$out_folder) && dir.exists(downscale_outputs$out_folder)) {
+    parent_dir <- dirname(downscale_outputs$out_folder)
+    if (grepl("^DS_.*AgMIP_", basename(downscale_outputs$out_folder), ignore.case = TRUE) && dir.exists(parent_dir)) {
+      parent_dir
+    } else {
+      downscale_outputs$out_folder
+    }
+  } else {
+    out_dir
+  }
+
+  Sys.setenv(ACT4CAP_INPUT_ROOT       = swat_input_root)
+  Sys.setenv(ACT4CAP_ROOT             = swat_out_dir)
+  Sys.setenv(ACT4CAP_SWAT_DIR         = swat_dir)
+  Sys.setenv(ACT4CAP_DEFAULTS_DIR     = file.path(swat_dir, 'default_hru_shp'))
+  Sys.setenv(ACT4CAP_MODEL            = toupper(model))
+  Sys.setenv(ACT4CAP_MODELS           = toupper(model))
+  Sys.setenv(ACT4CAP_LANDUSE_SCENARIO = tolower(scenario))
+  Sys.setenv(ACT4CAP_SCENARIO         = tolower(scenario))
+  Sys.setenv(ACT4CAP_LU_FILE          = lu_file)
+  Sys.setenv(ACT4CAP_TRIAL            = fifelse(is_trial, "1", "0"))
+  Sys.setenv(ACT4CAP_FORCE            = fifelse(force, "1", "0"))
+  Sys.setenv(ACT4CAP_CORES            = as.character(ncores))
+  Sys.setenv(PYTHONPATH               = paste(unique(c(swat_dir, Sys.getenv("PYTHONPATH"))), collapse = .Platform$path.sep))
 
   txtinout_dir <- file.path(swat_dir, 'default_hru_shp', 'TxtInOut')
   if (file.exists(run_py)) {
-    cli_alert_info('Dispatching authentic SWAT+ pipeline: {basename(run_py)}...')
+    cli_alert_info('Dispatching authentic SWAT+ pipeline: {basename(run_py)} [INPUT_ROOT={swat_input_root}, MODEL={toupper(model)}]...')
     scen_arg <- if (tolower(scenario) %in% c('base', 'baseline')) 'baseline' else scenario
     dispatch_cmd <- if (basename(run_py) == '0_run_pipeline.py') {
-      sprintf('cd "%s" && python "%s" --scenario "%s"', swat_dir, basename(run_py), scen_arg)
+      sprintf('cd "%s" && python "%s" --scenario "%s" --models "%s"', swat_dir, basename(run_py), scen_arg, toupper(model))
     } else {
       sprintf('cd "%s" && python "%s" --scenario "%s"', swat_dir, basename(run_py), scen_arg)
     }
@@ -186,12 +201,17 @@ run_act4cap_swat_postprocess <- function(model,
   }
 
   # 4. Ingest Authentic SWAT+ Hydrological & Nutrient Simulation Tables
-  # Source of Truth: calibrated European catchment outputs from SWAT+ TxtInOut
-  target_txtinout <- if (dir.exists(file.path(swat_out_dir, 'TxtInOut'))) {
-    file.path(swat_out_dir, 'TxtInOut')
-  } else {
+  # Source of Truth: model-specific prepared TxtInOut under swat_out_dir, or default calibrated TxtInOut
+  model_ds_folder <- if (!is.null(downscale_outputs$out_folder)) basename(downscale_outputs$out_folder) else ""
+  swat_scen_folder <- if (tolower(scenario) %in% c("base", "baseline")) "climate_baseline_landuse_baseline" else paste0("climate_baseline_landuse_", tolower(scenario))
+  cand_txtinouts <- c(
+    if (nzchar(model_ds_folder)) file.path(swat_out_dir, swat_scen_folder, model_ds_folder, "TxtInOut") else character(0),
+    Sys.glob(file.path(swat_out_dir, "*", paste0("*", toupper(model), "*"), "TxtInOut")),
+    file.path(swat_out_dir, "TxtInOut"),
     txtinout_dir
-  }
+  )
+  cand_txtinouts <- unique(cand_txtinouts[dir.exists(cand_txtinouts)])
+  target_txtinout <- if (length(cand_txtinouts) > 0) cand_txtinouts[1] else txtinout_dir
 
   wb_file <- file.path(target_txtinout, 'basin_wb_aa.csv')
   nb_file <- file.path(target_txtinout, 'basin_nb_aa.csv')
