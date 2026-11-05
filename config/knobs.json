@@ -60,6 +60,7 @@
       "label": "Macro Model Input File / Vintage",
       "enum": [
         "latest",
+        "20261021_GLOBIOM_comprehensive.csv",
         "20260916_compr_scens_merge.csv",
         "20260319_MAGNET_AgMIP_accelerator.csv",
         "20260305_MAGNET_AgMIP.csv",
