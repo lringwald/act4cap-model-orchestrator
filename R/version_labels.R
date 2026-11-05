@@ -112,19 +112,55 @@ construct_version_tag <- function(model,
 }
 
 # --- IO helpers enforcing standard file formats -------------------------------
+safe_fwrite <- function(dt, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(path)) tryCatch(unlink(path, force = TRUE), error = function(e) NULL)
+
+  # Try direct fwrite
+  res <- tryCatch({
+    data.table::fwrite(dt, path)
+    tryCatch(Sys.chmod(path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (!res) {
+    # If direct open/write failed (e.g. EPERM on existing file owned by another GID), write to PID temp and replace
+    tmp_path <- file.path(dirname(path), sprintf(".tmp_%s_%s", Sys.getpid(), basename(path)))
+    tryCatch({
+      data.table::fwrite(dt, tmp_path)
+      tryCatch(Sys.chmod(tmp_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      file.rename(tmp_path, path)
+      tryCatch(Sys.chmod(path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      TRUE
+    }, error = function(e2) {
+      cli::cli_alert_warning('Could not overwrite {basename(path)} ({e2$message})')
+      FALSE
+    })
+  }
+}
+
 write_cell_tabular_data <- function(dt, parquet_path) {
   dir.create(dirname(parquet_path), recursive = TRUE, showWarnings = FALSE)
   if (file.exists(parquet_path)) tryCatch(unlink(parquet_path, force = TRUE), error = function(e) NULL)
   if (requireNamespace("arrow", quietly = TRUE)) {
-    arrow::write_parquet(as.data.frame(dt), parquet_path, compression = "snappy")
-    tryCatch(Sys.chmod(parquet_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+    written <- tryCatch({
+      arrow::write_parquet(as.data.frame(dt), parquet_path, compression = "snappy")
+      tryCatch(Sys.chmod(parquet_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      TRUE
+    }, error = function(e) FALSE)
+
+    if (!written) {
+      tmp_p <- file.path(dirname(parquet_path), sprintf(".tmp_%s_%s", Sys.getpid(), basename(parquet_path)))
+      arrow::write_parquet(as.data.frame(dt), tmp_p, compression = "snappy")
+      tryCatch(Sys.chmod(tmp_p, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      file.rename(tmp_p, parquet_path)
+      tryCatch(Sys.chmod(parquet_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+    }
     return(parquet_path)
   }
   # Fallback to CSV if arrow is unavailable
   csv_path <- sub("\\.parquet$", ".csv", parquet_path)
-  if (file.exists(csv_path)) tryCatch(unlink(csv_path, force = TRUE), error = function(e) NULL)
-  data.table::fwrite(dt, csv_path)
-  tryCatch(Sys.chmod(csv_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+  safe_fwrite(dt, csv_path)
   csv_path
 }
 

@@ -247,9 +247,7 @@ run_act4cap_swat_postprocess <- function(model,
   )]
   setcolorder(swat_summary, c('model', 'scenario', 'macro_input_file', 'downscale_file', 'Ns_reg', 'year'))
 
-  if (file.exists(out_csv)) tryCatch(unlink(out_csv, force = TRUE), error = function(e) NULL)
-  fwrite(swat_summary, out_csv)
-  tryCatch(Sys.chmod(out_csv, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+  safe_fwrite(swat_summary, out_csv)
 
   # 6. Spatially explicit cell-level export (Parquet & GeoTIFF rasters)
   cell_parquet <- NULL

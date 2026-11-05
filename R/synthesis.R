@@ -128,15 +128,9 @@ synthesize_act4cap_results <- function(model,
   }
 
   # Write to unified job directory
-  if (file.exists(synth_csv)) tryCatch(unlink(synth_csv, force = TRUE), error = function(e) NULL)
-  fwrite(synth_dt, synth_csv)
-  tryCatch(Sys.chmod(synth_csv, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+  safe_fwrite(synth_dt, synth_csv)
   # Also write to central synthesis directory for instant multi-model access
-  if (file.exists(central_csv)) tryCatch(unlink(central_csv, force = TRUE), error = function(e) NULL)
-  tryCatch({
-    fwrite(synth_dt, central_csv)
-    Sys.chmod(central_csv, mode = "0666", use_umask = FALSE)
-  }, error = function(e) NULL)
+  safe_fwrite(synth_dt, central_csv)
 
   cli_alert_success('Saved integrated multi-pillar synthesis CSV: {basename(synth_csv)} ({nrow(synth_dt)} records)')
 
