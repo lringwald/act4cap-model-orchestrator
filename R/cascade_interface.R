@@ -110,6 +110,46 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
   ))
 }
 
+ensure_downscale_parquet <- function(lu_file, model, scenario, out_dir) {
+  if (is.null(lu_file) || !file.exists(lu_file)) return(lu_file)
+  if (grepl('\\.parquet$', lu_file, ignore.case = TRUE)) return(lu_file)
+
+  # Check if companion .parquet already exists next to the CSV
+  companion_parquet <- sub('\\.csv$', '.parquet', lu_file, ignore.case = TRUE)
+  if (file.exists(companion_parquet)) {
+    cli_alert_success('Using standard Parquet cell table: {basename(companion_parquet)}')
+    return(companion_parquet)
+  }
+
+  # Under Act4Cap project architecture rules, cell tables must be .parquet
+  cli_alert_info('Standardizing legacy downscaled cell table to Parquet: {basename(companion_parquet)}...')
+  upgraded <- tryCatch({
+    dt <- read_cell_tabular_data(lu_file)
+    write_cell_tabular_data(dt, companion_parquet)
+    tryCatch(Sys.chmod(companion_parquet, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+    companion_parquet
+  }, error = function(e) {
+    # If source folder is read-only, write into out_dir/downscaling/
+    local_dir <- file.path(out_dir, sprintf('%s_%s', tolower(model), tolower(scenario)), 'downscaling')
+    if (!dir.exists(local_dir)) dir.create(local_dir, recursive = TRUE)
+    local_parquet <- file.path(local_dir, basename(companion_parquet))
+    tryCatch({
+      dt <- read_cell_tabular_data(lu_file)
+      write_cell_tabular_data(dt, local_parquet)
+      tryCatch(Sys.chmod(local_parquet, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      local_parquet
+    }, error = function(err) {
+      cli_alert_warning('Could not auto-convert downscaled CSV to Parquet ({err$message}); proceeding with CSV.')
+      lu_file
+    })
+  })
+
+  if (grepl('\\.parquet$', upgraded, ignore.case = TRUE)) {
+    cli_alert_success('Successfully upgraded downscaled land use to Parquet: {basename(upgraded)}')
+  }
+  return(upgraded)
+}
+
 locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, downscale_output = "auto") {
   # 1. If explicit downscale_output folder or file was selected from target folder dropdown
   if (!is.null(downscale_output) && nzchar(downscale_output) && downscale_output != "auto" && downscale_output != "none") {
@@ -127,8 +167,9 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
         found <- found[!grepl('_luc', found)]
         if (length(found) > 0) {
           parquet_f <- found[grepl('\\.parquet$', found, ignore.case = TRUE)]
-          lu_file <- if (length(parquet_f) > 0) parquet_f[1] else found[1]
-          cli_alert_success('Selected explicit downscaling output from target folder: {basename(lu_file)} [{dirname(lu_file)}]')
+          lu_raw <- if (length(parquet_f) > 0) parquet_f[1] else found[1]
+          lu_file <- ensure_downscale_parquet(lu_raw, model, scenario, out_dir)
+          cli_alert_success('Selected explicit downscaling output: {basename(lu_file)} [{dirname(lu_file)}]')
           return(list(
             model       = model,
             scenario    = scenario,
@@ -140,15 +181,16 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
           ))
         }
       } else if (file.exists(tc)) {
-        cli_alert_success('Selected explicit downscaling output file: {basename(tc)}')
+        lu_file <- ensure_downscale_parquet(tc, model, scenario, out_dir)
+        cli_alert_success('Selected explicit downscaling output file: {basename(lu_file)}')
         return(list(
           model       = model,
           scenario    = scenario,
-          lu_file     = tc,
-          lu_parquet  = if (grepl('\\.parquet$', tc, ignore.case = TRUE)) tc else NULL,
-          lu_csv      = tc,
-          out_folder  = dirname(tc),
-          source_name = tools::file_path_sans_ext(basename(tc))
+          lu_file     = lu_file,
+          lu_parquet  = if (grepl('\\.parquet$', lu_file, ignore.case = TRUE)) lu_file else NULL,
+          lu_csv      = lu_file,
+          out_folder  = dirname(lu_file),
+          source_name = tools::file_path_sans_ext(basename(lu_file))
         ))
       }
     }
@@ -188,11 +230,12 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
   if (length(cands) > 0) {
     # Prioritize .parquet over .csv if available
     parquet_cands <- cands[grepl('\\.parquet$', cands, ignore.case = TRUE)]
-    lu_file <- if (length(parquet_cands) > 0) {
+    lu_raw <- if (length(parquet_cands) > 0) {
       sort(parquet_cands, decreasing = TRUE)[1]
     } else {
       sort(cands, decreasing = TRUE)[1]
     }
+    lu_file <- ensure_downscale_parquet(lu_raw, model, scenario, out_dir)
     cli_alert_success('Located downscaled land-use file: {basename(lu_file)} [{dirname(lu_file)}]')
     return(list(
       model       = model,
