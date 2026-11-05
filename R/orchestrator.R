@@ -54,11 +54,11 @@ TRIAL             <- (get_param('TRIAL', '0') %in% c('1', 'true', 'TRUE', 'yes')
 FORCE            <- get_param('FORCE', '0') %in% c('1', 'true', 'TRUE', 'yes')
 RUN_DATE         <- get_param('RUN_DATE', '')
 VERSION_TAG      <- get_param('VERSION_TAG', '')
-WORK_DIR         <- get_param('WORK_DIR', '/mnt/wdrv/act4cap')
-OUTPUT_DIR       <- get_param('OUTPUT_DIR', 'outputs')
-INPUT_DIR        <- get_param('INPUT_DIR', 'inputs')
+WORK_DIR         <- get_param('WORK_DIR', '/mnt/wdrv/ACT4CAP-model-pipeline')
+OUTPUT_DIR       <- get_param('OUTPUT_DIR', '03_outputs')
+INPUT_DIR        <- get_param('INPUT_DIR', '00_inputs/macro_models')
 GAMBLE_DIR       <- get_param('CASCADING_GAMBLE_DIR', 'g:/My Drive/R/cascadinggamble-core')
-SWATPLUS_DIR     <- get_param('SWATPLUS_DIR', '/mnt/wdrv/swatplus_runs')
+SWATPLUS_DIR     <- get_param('SWATPLUS_DIR', '/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus')
 BIODIVERSITY_DIR <- get_param('BIODIVERSITY_LINK_DIR', 'vendor/Biodiversity_Link')
 BIODIVERSITY_MAPPING_FILE <- get_param('BIODIVERSITY_MAPPING_FILE', 'config/mapping_agmip_to_biodiversity_link.csv')
 POSTMODEL_MODE   <- tolower(get_param('POSTMODEL_MODE', 'full'))
@@ -73,8 +73,22 @@ if (!dir.exists(gamble_dir_resolved)) {
 
 # Auto-resolve SWAT+ directory across cluster and Windows mount points
 swat_dir_resolved <- SWATPLUS_DIR
+if (startsWith(swat_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows") {
+  mapped_swat <- sub("^/mnt/wdrv/?", "W:/", swat_dir_resolved)
+  if (dir.exists(mapped_swat)) swat_dir_resolved <- mapped_swat
+}
 if (!dir.exists(swat_dir_resolved)) {
-  for (cand in c('/mnt/wdrv/swatplus_runs', 'W:/swatplus_runs', 'Q:/swatplus_runs', '/mnt/wdrv/act4cap/swatplus_runs', 'swatplus_runs')) {
+  for (cand in c(
+    '/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus',
+    'W:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
+    'Q:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
+    'g:/My Drive/R/act4cap-swatplus',
+    '../act4cap-swatplus',
+    '/mnt/wdrv/swatplus_runs',
+    'W:/swatplus_runs',
+    'Q:/swatplus_runs',
+    'swatplus_runs'
+  )) {
     if (dir.exists(cand)) { swat_dir_resolved <- cand; break }
   }
 }

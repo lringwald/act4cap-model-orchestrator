@@ -17,7 +17,7 @@ if (!exists('construct_version_tag')) {
   if (file.exists('R/version_labels.R')) source('R/version_labels.R')
 }
 
-resolve_macro_model_vintage <- function(input_file = "", model = "globiom", input_dir = "inputs", gamble_dir = NULL) {
+resolve_macro_model_vintage <- function(input_file = "", model = "globiom", input_dir = "00_inputs/macro_models", gamble_dir = NULL) {
   # If an explicit non-empty input_file is given, resolve its path
   if (!is.null(input_file) && nzchar(input_file) && input_file != "latest") {
     if (file.exists(input_file)) {
@@ -29,7 +29,14 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
     }
     cands <- c(
       file.path(input_dir, model, input_file),
+      file.path(input_dir, "merged", input_file),
       file.path(input_dir, input_file),
+      file.path("W:/ACT4CAP-model-pipeline/00_inputs/macro_models", model, input_file),
+      file.path("W:/ACT4CAP-model-pipeline/00_inputs/macro_models/merged", input_file),
+      file.path("W:/ACT4CAP-model-pipeline/00_inputs/macro_models", input_file),
+      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models", model, input_file),
+      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models/merged", input_file),
+      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models", input_file),
       file.path("W:/model_outputs", model, input_file),
       file.path("W:/model_outputs/merged", input_file),
       file.path("W:/model_outputs", input_file),
@@ -55,7 +62,14 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
   # Automatic detection: scan directories for latest vintage matching macro model
   search_dirs <- c(
     file.path(input_dir, model),
+    file.path(input_dir, "merged"),
     input_dir,
+    "W:/ACT4CAP-model-pipeline/00_inputs/macro_models/merged",
+    file.path("W:/ACT4CAP-model-pipeline/00_inputs/macro_models", model),
+    "W:/ACT4CAP-model-pipeline/00_inputs/macro_models",
+    "/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models/merged",
+    file.path("/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models", model),
+    "/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models",
     "W:/model_outputs/merged",
     file.path("W:/model_outputs", model),
     "W:/model_outputs",
@@ -154,6 +168,9 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
   # 1. If explicit downscale_output folder or file was selected from target folder dropdown
   if (!is.null(downscale_output) && nzchar(downscale_output) && downscale_output != "auto" && downscale_output != "none") {
     target_cands <- c(
+      file.path("W:/ACT4CAP-model-pipeline/01_downscaling", downscale_output),
+      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling", downscale_output),
+      file.path(out_dir, "..", "01_downscaling", downscale_output),
       file.path("W:/cascade_gamble_outputs", downscale_output),
       file.path("/mnt/wdrv/cascade_gamble_outputs", downscale_output),
       file.path(out_dir, downscale_output),
@@ -209,9 +226,12 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
     ))
   }
 
-  # 2. Look in out_dir, W:/cascade_gamble_outputs, and cluster paths (.parquet or .csv)
+  # 2. Look in out_dir, 01_downscaling, and legacy cluster paths (.parquet or .csv)
   pat <- sprintf('DS_.*AgMIP_%s_.*_lu.*\\.(parquet|csv)$', toupper(model))
   search_roots <- c(
+    "W:/ACT4CAP-model-pipeline/01_downscaling",
+    "/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling",
+    file.path(out_dir, "..", "01_downscaling"),
     out_dir,
     "W:/cascade_gamble_outputs",
     "/mnt/wdrv/cascade_gamble_outputs",
@@ -279,7 +299,7 @@ run_act4cap_cascade_downscaling <- function(model,
   vintage_info <- resolve_macro_model_vintage(
     input_file = if (is.null(input_file) || !nzchar(input_file)) "latest" else input_file,
     model = model,
-    input_dir = "inputs",
+    input_dir = "00_inputs/macro_models",
     gamble_dir = gamble_dir
   )
   

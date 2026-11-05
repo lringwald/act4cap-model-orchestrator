@@ -83,10 +83,53 @@ for i in "${!KN[@]}"; do
 done
 echo "-----------------------------------------------------------------------------"
 
-# --- persistent storage redirection (FUSE mount) ---
+# --- persistent storage redirection & unified pipeline consolidation (FUSE mount) ---
 if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
-  mkdir -p "$WORK_DIR/$OUTPUT_DIR" "$WORK_DIR/logs"
-  chmod -R a+rwX "$WORK_DIR/$OUTPUT_DIR" 2>/dev/null || true
+  WDRV_BASE="$(dirname "$WORK_DIR")"
+  mkdir -p "$WORK_DIR/00_inputs/macro_models" \
+           "$WORK_DIR/00_inputs/swatplus_assets" \
+           "$WORK_DIR/00_inputs/biodiversity_assets" \
+           "$WORK_DIR/01_downscaling" \
+           "$WORK_DIR/02_postmodels/swatplus" \
+           "$WORK_DIR/02_postmodels/biodiversity_link" \
+           "$WORK_DIR/$OUTPUT_DIR" \
+           "$WORK_DIR/99_archive" \
+           "$WORK_DIR/logs"
+
+  # Consolidate legacy loose directories on /mnt/wdrv into ACT4CAP-model-pipeline if present
+  if [ "$WDRV_BASE" = "/mnt/wdrv" ]; then
+    if [ -d "/mnt/wdrv/model_outputs" ]; then
+      cp -rn /mnt/wdrv/model_outputs/* "$WORK_DIR/00_inputs/macro_models/" 2>/dev/null || true
+      rm -rf /mnt/wdrv/model_outputs 2>/dev/null || true
+    fi
+    if [ -d "/mnt/wdrv/cascade_gamble_outputs" ]; then
+      cp -rn /mnt/wdrv/cascade_gamble_outputs/* "$WORK_DIR/01_downscaling/" 2>/dev/null || true
+      rm -rf /mnt/wdrv/cascade_gamble_outputs 2>/dev/null || true
+    fi
+    if [ -d "/mnt/wdrv/swatplus_runs/default_hru_shp" ]; then
+      mkdir -p "$WORK_DIR/00_inputs/swatplus_assets/default_hru_shp"
+      cp -rn /mnt/wdrv/swatplus_runs/default_hru_shp/* "$WORK_DIR/00_inputs/swatplus_assets/default_hru_shp/" 2>/dev/null || true
+    fi
+    if [ -d "/mnt/wdrv/swatplus_runs" ]; then
+      cp -rn /mnt/wdrv/swatplus_runs/*.py "$WORK_DIR/02_postmodels/swatplus/" 2>/dev/null || true
+      rm -rf /mnt/wdrv/swatplus_runs 2>/dev/null || true
+    fi
+    if [ -d "/mnt/wdrv/act4cap/outputs" ]; then
+      cp -rn /mnt/wdrv/act4cap/outputs/* "$WORK_DIR/$OUTPUT_DIR/" 2>/dev/null || true
+    fi
+    if [ -d "/mnt/wdrv/act4cap/swatplus_staging" ]; then
+      cp -rn /mnt/wdrv/act4cap/swatplus_staging/* "$WORK_DIR/02_postmodels/swatplus/" 2>/dev/null || true
+    fi
+    [ -d "/mnt/wdrv/act4cap" ] && rm -rf /mnt/wdrv/act4cap 2>/dev/null || true
+    for arch_dir in /mnt/wdrv/enriched_with_bii /mnt/wdrv/*_backup_*; do
+      if [ -d "$arch_dir" ]; then
+        mv "$arch_dir" "$WORK_DIR/99_archive/" 2>/dev/null || rm -rf "$arch_dir" 2>/dev/null || true
+      fi
+    done
+    [ -d "$WORK_DIR/02_postmodels/swatplus/default_hru_shp" ] && rm -rf "$WORK_DIR/02_postmodels/swatplus/default_hru_shp" 2>/dev/null || true
+  fi
+
+  chmod -R a+rwX "$WORK_DIR/$OUTPUT_DIR" "$WORK_DIR/02_postmodels" 2>/dev/null || true
   if [ ! -L "$OUTPUT_DIR" ]; then
     rm -rf "$OUTPUT_DIR"
     ln -s "$WORK_DIR/$OUTPUT_DIR" "$OUTPUT_DIR"

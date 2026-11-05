@@ -30,7 +30,7 @@ run_act4cap_swat_postprocess <- function(model,
                                          scenario,
                                          downscale_outputs,
                                          out_dir,
-                                         swat_dir = '/mnt/wdrv/swatplus_runs',
+                                         swat_dir = '/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus',
                                          postmodel_mode = 'full',
                                          trial = FALSE,
                                          force = FALSE,
@@ -94,25 +94,50 @@ run_act4cap_swat_postprocess <- function(model,
   # 1. Enforce SWAT+ toolkit existence (no ad-hoc fallback)
   if (!dir.exists(swat_dir)) {
     # Check alternate local mounts
-    for (cand in c('W:/swatplus_runs', 'Q:/swatplus_runs', '/mnt/wdrv/swatplus_runs', 'swatplus_runs')) {
+    for (cand in c(
+      '/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus',
+      'W:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
+      'Q:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
+      'g:/My Drive/R/act4cap-swatplus',
+      'W:/swatplus_runs',
+      'Q:/swatplus_runs',
+      '/mnt/wdrv/swatplus_runs',
+      'swatplus_runs'
+    )) {
       if (dir.exists(cand)) { swat_dir <- cand; break }
     }
   }
 
+  # Resolve DEFAULTS_DIR (00_inputs/swatplus_assets/default_hru_shp or swat_dir/default_hru_shp)
+  defaults_dir <- file.path(swat_dir, 'default_hru_shp')
+  for (dc in c(
+    '/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/swatplus_assets/default_hru_shp',
+    'W:/ACT4CAP-model-pipeline/00_inputs/swatplus_assets/default_hru_shp',
+    'Q:/ACT4CAP-model-pipeline/00_inputs/swatplus_assets/default_hru_shp',
+    file.path(swat_dir, 'default_hru_shp'),
+    '/mnt/wdrv/swatplus_runs/default_hru_shp',
+    'W:/swatplus_runs/default_hru_shp'
+  )) {
+    if (dir.exists(dc) && file.exists(file.path(dc, 'hrus1.shp'))) {
+      defaults_dir <- dc
+      break
+    }
+  }
+
   has_toolkit <- dir.exists(swat_dir) && (file.exists(file.path(swat_dir, 'config.py')) || file.exists(file.path(swat_dir, '0_run_pipeline.py')))
-  has_hru_shp <- dir.exists(file.path(swat_dir, 'default_hru_shp'))
+  has_hru_shp <- dir.exists(defaults_dir) && file.exists(file.path(defaults_dir, 'hrus1.shp'))
 
   if (!has_toolkit || !has_hru_shp) {
     stop(cli::format_error(c(
-      "!" = "SWAT+ toolkit directory or European HRU dataset not found at '{swat_dir}'.",
+      "!" = "SWAT+ toolkit directory ('{swat_dir}') or European HRU dataset ('{defaults_dir}') not found.",
       "x" = "Under Act4Cap Data Integrity Rules (data-integrity.md), ad-hoc heuristic coefficients are strictly forbidden.",
-      "i" = "Please ensure /mnt/wdrv/swatplus_runs is mounted on the cluster with the authentic SWAT+ Python pipeline and default_hru_shp/.",
+      "i" = "Please ensure ACT4CAP-model-pipeline/02_postmodels/swatplus and 00_inputs/swatplus_assets/default_hru_shp are mounted.",
       "i" = "To execute only the authentic Biodiversity Link module, set POSTMODELS=biodiversity or RUN_SWAT=0."
     )))
   }
 
   cli_alert_success('Verified authentic SWAT+ pipeline scripts in {swat_dir}')
-  cli_alert_success('Verified European HRU shapefiles and model assets in {swat_dir}/default_hru_shp')
+  cli_alert_success('Verified European HRU shapefiles and model assets in {defaults_dir}')
 
   # 2. Check downscaled land-use input table (.parquet or .csv)
   lu_file <- if (!is.null(downscale_outputs$lu_parquet) && file.exists(downscale_outputs$lu_parquet)) {
@@ -163,7 +188,7 @@ run_act4cap_swat_postprocess <- function(model,
   Sys.setenv(ACT4CAP_INPUT_ROOT       = swat_input_root)
   Sys.setenv(ACT4CAP_ROOT             = swat_out_dir)
   Sys.setenv(ACT4CAP_SWAT_DIR         = swat_dir)
-  Sys.setenv(ACT4CAP_DEFAULTS_DIR     = file.path(swat_dir, 'default_hru_shp'))
+  Sys.setenv(ACT4CAP_DEFAULTS_DIR     = defaults_dir)
   Sys.setenv(ACT4CAP_MODEL            = toupper(model))
   Sys.setenv(ACT4CAP_MODELS           = toupper(model))
   Sys.setenv(ACT4CAP_LANDUSE_SCENARIO = tolower(scenario))
@@ -174,7 +199,7 @@ run_act4cap_swat_postprocess <- function(model,
   Sys.setenv(ACT4CAP_CORES            = as.character(ncores))
   Sys.setenv(PYTHONPATH               = paste(unique(c(swat_dir, Sys.getenv("PYTHONPATH"))), collapse = .Platform$path.sep))
 
-  txtinout_dir <- file.path(swat_dir, 'default_hru_shp', 'TxtInOut')
+  txtinout_dir <- file.path(defaults_dir, 'TxtInOut')
   if (file.exists(run_py)) {
     cli_alert_info('Dispatching authentic SWAT+ pipeline: {basename(run_py)} [INPUT_ROOT={swat_input_root}, MODEL={toupper(model)}]...')
     scen_arg <- if (tolower(scenario) %in% c('base', 'baseline')) 'baseline' else scenario
