@@ -355,7 +355,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
     )
   }
 
-  saveRDS(list(
+  safe_saveRDS(list(
     bii_summary  = bii_summary,
     csar_summary = csar_summary,
     cell_summary = if (exists('cell_bio')) cell_bio else NULL,

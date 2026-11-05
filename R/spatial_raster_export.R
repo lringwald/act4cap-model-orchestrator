@@ -56,6 +56,37 @@ load_master_grid_10km_lookup <- function(gamble_dir = NULL) {
   return(mg_u)
 }
 
+safe_writeRaster <- function(r, path, ...) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(path)) tryCatch(unlink(path, force = TRUE), error = function(e) NULL)
+
+  ok <- tryCatch({
+    terra::writeRaster(r, path, overwrite = TRUE, ...)
+    tryCatch(Sys.chmod(path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (!ok) {
+    tmp_path <- file.path(dirname(path), sprintf(".tmp_%s_%s", Sys.getpid(), basename(path)))
+    tryCatch({
+      terra::writeRaster(r, tmp_path, overwrite = TRUE, ...)
+      tryCatch(Sys.chmod(tmp_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      renamed <- file.rename(tmp_path, path)
+      if (!renamed) {
+        alt_path <- file.path(dirname(path), sprintf("%s_%s.tif", tools::file_path_sans_ext(basename(path)), Sys.getpid()))
+        file.rename(tmp_path, alt_path)
+        tryCatch(Sys.chmod(alt_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+        path <- alt_path
+      } else {
+        tryCatch(Sys.chmod(path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      }
+      TRUE
+    }, error = function(e2) {
+      FALSE
+    })
+  }
+}
+
 export_indicators_to_geotiff <- function(cell_dt,
                                          indicator_cols,
                                          out_dir,
@@ -123,7 +154,7 @@ export_indicators_to_geotiff <- function(cell_dt,
       r <- terra::rast(xyz_df, type = 'xyz', crs = 'EPSG:3035')
       names(r) <- sprintf('%s_%s', ind, yr)
       
-      terra::writeRaster(r, tif_path, overwrite = TRUE, gdal = c('COMPRESS=DEFLATE'))
+      safe_writeRaster(r, tif_path, gdal = c('COMPRESS=DEFLATE'))
       created_tifs <- c(created_tifs, tif_path)
     }
   }

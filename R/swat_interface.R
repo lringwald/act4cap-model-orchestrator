@@ -282,8 +282,7 @@ run_act4cap_swat_postprocess <- function(model,
     )
   }
 
-  if (file.exists(composite_rds)) tryCatch(unlink(composite_rds, force = TRUE), error = function(e) NULL)
-  saveRDS(list(
+  safe_saveRDS(list(
     swat_summary = swat_summary,
     cell_summary = if (exists('cell_swat')) cell_swat else NULL,
     rasters      = tifs,
@@ -301,7 +300,6 @@ run_act4cap_swat_postprocess <- function(model,
       postmodel_mode = postmodel_mode
     )
   ), composite_rds)
-  tryCatch(Sys.chmod(composite_rds, mode = "0666", use_umask = FALSE), error = function(e) NULL)
 
   cli_alert_success('Saved authentic SWAT+ water quality summary: {basename(out_csv)} ({nrow(swat_summary)} records)')
 

@@ -129,12 +129,53 @@ safe_fwrite <- function(dt, path) {
     tryCatch({
       data.table::fwrite(dt, tmp_path)
       tryCatch(Sys.chmod(tmp_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
-      file.rename(tmp_path, path)
-      tryCatch(Sys.chmod(path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      renamed <- file.rename(tmp_path, path)
+      if (!renamed) {
+        alt_path <- file.path(dirname(path), sprintf("%s_%s.csv", tools::file_path_sans_ext(basename(path)), Sys.getpid()))
+        file.rename(tmp_path, alt_path)
+        tryCatch(Sys.chmod(alt_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      } else {
+        tryCatch(Sys.chmod(path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      }
       TRUE
     }, error = function(e2) {
       cli::cli_alert_warning('Could not overwrite {basename(path)} ({e2$message})')
       FALSE
+    })
+  }
+}
+
+safe_saveRDS <- function(object, file, ...) {
+  dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+  if (file.exists(file)) tryCatch(unlink(file, force = TRUE), error = function(e) NULL)
+
+  res <- tryCatch({
+    saveRDS(object, file, ...)
+    tryCatch(Sys.chmod(file, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (!res) {
+    # If direct saveRDS failed due to EPERM on existing file owned by another GID:
+    tmp_file <- file.path(dirname(file), sprintf(".tmp_%s_%s", Sys.getpid(), basename(file)))
+    tryCatch({
+      saveRDS(object, tmp_file, ...)
+      tryCatch(Sys.chmod(tmp_file, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      renamed <- file.rename(tmp_file, file)
+      if (!renamed) {
+        alt_file <- file.path(dirname(file), sprintf("%s_%s.rds", tools::file_path_sans_ext(basename(file)), Sys.getpid()))
+        file.rename(tmp_file, alt_file)
+        tryCatch(Sys.chmod(alt_file, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+        cli::cli_alert_warning('Could not overwrite {basename(file)}; saved with pid suffix {basename(alt_file)}')
+      } else {
+        tryCatch(Sys.chmod(file, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      }
+      TRUE
+    }, error = function(e2) {
+      cli::cli_alert_warning('Could not overwrite {basename(file)} ({e2$message}); saving with pid suffix')
+      alt_file <- file.path(dirname(file), sprintf("%s_%s.rds", tools::file_path_sans_ext(basename(file)), Sys.getpid()))
+      tryCatch(saveRDS(object, alt_file, ...), error = function(e3) NULL)
+      TRUE
     })
   }
 }
@@ -153,8 +194,15 @@ write_cell_tabular_data <- function(dt, parquet_path) {
       tmp_p <- file.path(dirname(parquet_path), sprintf(".tmp_%s_%s", Sys.getpid(), basename(parquet_path)))
       arrow::write_parquet(as.data.frame(dt), tmp_p, compression = "snappy")
       tryCatch(Sys.chmod(tmp_p, mode = "0666", use_umask = FALSE), error = function(e) NULL)
-      file.rename(tmp_p, parquet_path)
-      tryCatch(Sys.chmod(parquet_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      renamed <- file.rename(tmp_p, parquet_path)
+      if (!renamed) {
+        alt_p <- file.path(dirname(parquet_path), sprintf("%s_%s.parquet", tools::file_path_sans_ext(basename(parquet_path)), Sys.getpid()))
+        file.rename(tmp_p, alt_p)
+        tryCatch(Sys.chmod(alt_p, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+        parquet_path <- alt_p
+      } else {
+        tryCatch(Sys.chmod(parquet_path, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      }
     }
     return(parquet_path)
   }
