@@ -162,10 +162,11 @@ run_act4cap_swat_postprocess <- function(model,
   txtinout_dir <- file.path(swat_dir, 'default_hru_shp', 'TxtInOut')
   if (file.exists(run_py)) {
     cli_alert_info('Dispatching authentic SWAT+ pipeline: {basename(run_py)}...')
+    scen_arg <- if (tolower(scenario) %in% c('base', 'baseline')) 'baseline' else scenario
     dispatch_cmd <- if (basename(run_py) == '0_run_pipeline.py') {
-      sprintf('cd "%s" && python "%s" --scenario "%s"', swat_dir, basename(run_py), scenario)
+      sprintf('cd "%s" && python "%s" --scenario "%s"', swat_dir, basename(run_py), scen_arg)
     } else {
-      sprintf('cd "%s" && python "%s" --scenario "%s"', swat_dir, basename(run_py), scenario)
+      sprintf('cd "%s" && python "%s" --scenario "%s"', swat_dir, basename(run_py), scen_arg)
     }
     status <- tryCatch({
       system(dispatch_cmd)
