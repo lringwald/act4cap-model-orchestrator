@@ -86,6 +86,7 @@ echo "--------------------------------------------------------------------------
 # --- persistent storage redirection (FUSE mount) ---
 if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
   mkdir -p "$WORK_DIR/$OUTPUT_DIR" "$WORK_DIR/logs"
+  chmod -R a+rwX "$WORK_DIR/$OUTPUT_DIR" 2>/dev/null || true
   if [ ! -L "$OUTPUT_DIR" ]; then
     rm -rf "$OUTPUT_DIR"
     ln -s "$WORK_DIR/$OUTPUT_DIR" "$OUTPUT_DIR"

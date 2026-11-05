@@ -221,22 +221,38 @@ synthesize_act4cap_results <- function(model,
     synthesis_csv    = file.path("synthesis", basename(central_csv)),
     timestamp_utc    = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
   )
-  if (file.exists(index_file)) {
-    existing_idx <- tryCatch(fread(index_file), error = function(e) data.table())
-    if (nrow(existing_idx) > 0 && "tag" %in% names(existing_idx)) {
-      existing_idx <- existing_idx[tag != fn$tag]
-      combined_idx <- rbind(existing_idx, index_row, fill = TRUE)
-      tryCatch(unlink(index_file, force = TRUE), error = function(e) NULL)
-      fwrite(combined_idx, index_file)
-    } else {
-      tryCatch(unlink(index_file, force = TRUE), error = function(e) NULL)
-      fwrite(index_row, index_file)
+
+  # Central registry index maintenance must be non-fatal on permission or locking errors
+  tryCatch({
+    combined_idx <- index_row
+    if (file.exists(index_file)) {
+      existing_idx <- tryCatch(fread(index_file), error = function(e) data.table())
+      if (nrow(existing_idx) > 0 && "tag" %in% names(existing_idx)) {
+        combined_idx <- rbind(existing_idx[tag != fn$tag], index_row, fill = TRUE)
+      }
+      unlink(index_file, force = TRUE)
     }
-  } else {
-    fwrite(index_row, index_file)
-  }
-  tryCatch(Sys.chmod(index_file, mode = "0666", use_umask = FALSE), error = function(e) NULL)
-  cli_alert_success('Updated central runs index: {basename(index_file)}')
+    # Write atomically via tempfile or direct fwrite
+    tmp_idx <- file.path(central_dir, sprintf(".tmp_runs_index_%s.csv", Sys.getpid()))
+    fwrite(combined_idx, tmp_idx)
+    tryCatch(Sys.chmod(tmp_idx, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+    file.rename(tmp_idx, index_file)
+    tryCatch(Sys.chmod(index_file, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+    cli_alert_success('Updated central runs index: {basename(index_file)}')
+  }, error = function(e) {
+    # If file.rename or fwrite failed due to FUSE permissions, attempt direct fwrite
+    direct_ok <- tryCatch({
+      fwrite(combined_idx, index_file)
+      tryCatch(Sys.chmod(index_file, mode = "0666", use_umask = FALSE), error = function(e) NULL)
+      TRUE
+    }, error = function(err) FALSE)
+
+    if (direct_ok) {
+      cli_alert_success('Updated central runs index: {basename(index_file)}')
+    } else {
+      cli_alert_warning('Central runs index update bypassed ({conditionMessage(e)}); individual run manifest preserved in {basename(manifest_file)}')
+    }
+  })
 
   return(synth_csv)
 }
