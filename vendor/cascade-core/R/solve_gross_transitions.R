@@ -1,0 +1,304 @@
+#' Fienberg rebalancing for two vectors with a given starting matrix
+#'
+#' @param start_mat An \eqn{n} by \eqn{n} matrix with non-negative elements
+#' and row sums equal to 1.
+#' @param target_from An \eqn{n} by 1 vector with values >=0.
+#' @param target_to An \eqn{n} by 1 vector with values >=0. The sum of
+#' \code{target_from} must be equal to the sum of \code{target_to}.
+#'
+#' @param tol.margin Relative tolerance on the margins for \code{converged}.
+#'
+#' @return A list: \code{adjusted_matrix} (row shares), \code{optimVal}, \code{gain},
+#' \code{iter}, \code{stop.reason}, \code{margin_error} (largest relative deviation of
+#' the fitted row or column totals from the targets) and \code{converged}
+#' (\code{margin_error <= tol.margin}). A fit can stop because its objective no longer
+#' improves while the margins are still missed; \code{converged} reports that.
+#' @export
+fienberg <- function(start_mat, target_from, target_to,
+                     max.iter = 1000,
+                     tol.optim = 1e-8,
+                     tol.gain = 1e-10,
+                     min.iter = 10,
+                     min_flow = NULL,
+                     tol.margin = 1e-6) {
+  
+  if (!is.matrix(start_mat)) stop("start_mat must be a matrix.")
+  if (any(start_mat < 0)) stop("start_mat must have non-negative entries.")
+  if (abs(sum(target_from) - sum(target_to)) > 1e-6)
+    stop("Sum of target_from and target_to must be equal.")
+  
+  S <- start_mat
+  n <- nrow(S)
+  k <- ncol(S)
+  
+  curr.optimVal <- Inf
+  curr.gain <- Inf
+  iter <- 0
+  
+  while ((iter < min.iter) || (curr.gain > tol.gain && curr.optimVal > tol.optim && iter < max.iter)) {
+    weights <- target_to / colSums(S * target_from)
+    # Handle possible division by zero or NaN if targets are 0 but matrix has non-zero
+    weights[is.nan(weights) | is.infinite(weights)] <- 0
+    S <- sweep(S, 2, weights, "*")
+    
+    rs <- rowSums(S)
+    rs[rs == 0] <- 1 # Prevent division by zero
+    S <- sweep(S, 1, rs, "/")
+    
+    new_optimVal <- sqrt(mean((target_to - colSums(S * target_from))^2))
+    curr.gain <- abs(curr.optimVal - new_optimVal)
+    curr.optimVal <- new_optimVal
+    
+    iter <- iter + 1
+  }
+  
+  stop.reason <- if (curr.gain <= tol.gain) {
+    paste0("Gain in objective value smaller than tolerance (", tol.gain, ").")
+  } else if (curr.optimVal <= tol.optim) {
+    paste0("Objective value smaller than tolerance (", tol.optim, ").")
+  } else {
+    paste0("Maximum iterations reached (", max.iter, ").")
+  }
+  
+  # Optional thresholding of small flows
+  if (!is.null(min_flow)) {
+    S[S < min_flow] <- 0
+    rs <- rowSums(S)
+    rs[rs == 0] <- 1
+    S <- sweep(S, 1, rs, "/")
+  }
+  
+  # Remaining margin error of the fitted flows (rows and columns, relative)
+  flows <- S * target_from
+  rel_err <- function(got, want) {
+    tot <- max(sum(want), .Machine$double.eps)
+    ifelse(want > 0, abs(got - want) / want, abs(got - want) / tot)
+  }
+  margin_error <- max(c(rel_err(rowSums(flows), target_from), rel_err(colSums(flows), target_to), 0))
+
+  return(list(
+    adjusted_matrix = S,
+    optimVal = curr.optimVal,
+    gain = curr.gain,
+    iter = iter,
+    stop.reason = stop.reason,
+    margin_error = margin_error,
+    converged = margin_error <= tol.margin
+  ))
+}
+
+#' Convert Net Land Use to Gross Land Use Change Transitions
+#'
+#' @description
+#' Harmonizes differing total land use area vectors (`from_targets` and `to_targets`) into an 
+#' \eqn{n \times n} gross transition flow matrix using a cross-entropy (Fienberg) optimization.
+#'
+#' @param from_targets A `data.table` with columns `lu` and `value` (numeric >= 0) representing the initial areas.
+#' @param to_targets A `data.table` with columns `lu` and `value` (numeric >= 0) representing the target areas.
+#' @param prior Optional `data.table` with columns `from_class`, `to_class` and `value` (numeric >= 0) acting as a prior preference flow matrix.
+#' @param keep_areas Character string indicating which marginal totals to preserve: `"from"`, `"to"`, or `"both"` (default).
+#' @param allowed Optional allowed-transition table (`from_class`, `to_class`, `allowed`;
+#'   see [normalize_allowed_transitions()]). Disallowed pairs get no flow. `NULL`
+#'   (default) allows every pair, as before.
+#' @param exempt_classes Classes that keep all transitions (default `"NODATA"`, the
+#'   balancing class added for `keep_areas = "both"`).
+#' @param on_infeasible With `allowed`: `"stop"` (default) or `"warn"` when the margins
+#'   cannot be met on the allowed pairs. Without `allowed`, an infeasible support only warns.
+#' @param tol_margin Relative margin tolerance for the fit diagnostics.
+#' @param label Optional text identifying the fit (e.g. step, region, scenario, year),
+#'   recorded in [ipf_diagnostics()] and used in warnings.
+#'
+#' @return A `data.table` containing the solved transition flows with columns `from_class`,
+#'   `to_class`, and `value`. The fit diagnostics (feasibility, iterations, stop reason,
+#'   margin error, converged) are attached as attribute `"ipf_diagnostics"` and recorded
+#'   in [ipf_diagnostics()].
+#' @export
+solve_gross_transitions <- function(from_targets, to_targets, prior=NULL, keep_areas = "both",
+                                    allowed = NULL, exempt_classes = "NODATA",
+                                    on_infeasible = c("stop", "warn"), tol_margin = 1e-6, label = NULL) {
+  label <- if (is.null(label)) NA_character_ else as.character(label)[1]
+  at <- if (is.na(label)) "" else paste0(" [", label, "]")
+  on_infeasible <- match.arg(on_infeasible)
+  disallowed <- normalize_allowed_transitions(allowed, exempt_classes)
+  require(data.table)
+  min_cutoff = 1.0e-8
+  prior_off_diag = 0.1
+
+  # Error check of from_targets and to_targets
+  if (!all(c("lu", "value") %in% names(from_targets))) stop("Missing columns in from_targets")
+  if (!all(c("lu", "value") %in% names(to_targets))) stop("Missing columns in to_targets")
+  
+  if (!all(from_targets$value >= 0)) stop("All from_targets values must be larger or equal to zero.")
+  if (!all(to_targets$value >= 0)) stop("All to_targets values must be larger or equal to zero.")
+  
+  if (!is.data.table(from_targets)) from_targets <- as.data.table(from_targets)
+  if (!is.data.table(to_targets)) to_targets <- as.data.table(to_targets)
+  
+  # Ensure unique classes and non-duplicate margins
+  from_targets <- from_targets[, .(value = sum(value, na.rm = TRUE)), by = lu]
+  to_targets <- to_targets[, .(value = sum(value, na.rm = TRUE)), by = lu]
+  
+  lu_classes <- unique(c(as.character(from_targets$lu), as.character(to_targets$lu)))
+  
+  sum_from <- sum(from_targets$value)
+  sum_to <- sum(to_targets$value)
+  
+  if (keep_areas == "from") {
+    if (sum_to > 0) to_targets[, value := value / sum_to * sum_from]
+    sum_to <- sum_from
+  } else if (keep_areas == "to") {
+    if (sum_from > 0) from_targets[, value := value / sum_from * sum_to]
+    sum_from <- sum_to
+  } else if (keep_areas == "both") {
+    if (abs(sum_from - sum_to) > 1e-6) {
+      if (!"NODATA" %in% lu_classes) lu_classes <- c(lu_classes, "NODATA")
+      if (sum_from > sum_to) {
+        if ("NODATA" %in% to_targets$lu) {
+          to_targets[lu == "NODATA", value := value + (sum_from - sum_to)]
+        } else {
+          to_targets <- rbindlist(list(to_targets, data.table(lu = "NODATA", value = sum_from - sum_to)), use.names = TRUE)
+        }
+      } else {
+        if ("NODATA" %in% from_targets$lu) {
+          from_targets[lu == "NODATA", value := value + (sum_to - sum_from)]
+        } else {
+          from_targets <- rbindlist(list(from_targets, data.table(lu = "NODATA", value = sum_to - sum_from)), use.names = TRUE)
+        }
+      }
+    }
+  } else {
+    stop("keep_areas has to be ('from','to','both').")
+  }
+
+  n <- length(lu_classes)
+  
+  # Standardize classes using data.table merge
+  base_classes <- data.table(lu = lu_classes)
+  
+  from_std <- from_targets[base_classes, on = "lu"]
+  from_std[is.na(value), value := 0]
+  
+  to_std <- to_targets[base_classes, on = "lu"]
+  to_std[is.na(value), value := 0]
+  
+  # Initialize Matrix A
+  matA <- diag(n) + prior_off_diag
+  matA <- sweep(matA, 1, rowSums(matA), "/")
+  colnames(matA) <- rownames(matA) <- lu_classes
+
+  # Apply prior matrix using optimized prefix matching
+  if (!is.null(prior) && nrow(prior) > 0) {
+    if (!is.data.table(prior)) setDT(prior)
+    
+    rn <- rownames(matA)
+    cn <- colnames(matA)
+    
+    m_from <- match(as.character(prior$from_class), rn)
+    m_to   <- match(as.character(prior$to_class), cn)
+    if (!any(grepl(".", rn, fixed = TRUE)) && !any(grepl(".", cn, fixed = TRUE))) {
+      # Fast path without hierarchical (dotted) class names: only exact matches can
+      # apply, assigned in one vectorized step. Later rows win, as in the loop below.
+      hit <- which(!is.na(m_from) & !is.na(m_to))
+      if (length(hit)) {
+        keep <- hit[!duplicated(cbind(m_from[hit], m_to[hit]), fromLast = TRUE)]
+        matA[cbind(m_from[keep], m_to[keep])] <- prior$value[keep]
+      }
+    } else {
+      # Hierarchical class names (e.g. Forests.managed): a prior row may match a class
+      # exactly or as a prefix. Rows are applied in order, so a later row overrides an
+      # earlier one for the same cell (e.g. an exact row after a prefix row).
+      for (jjj in seq_len(nrow(prior))) {
+        p_from <- as.character(prior$from_class[jjj])
+        p_to   <- as.character(prior$to_class[jjj])
+        row.pointer <- m_from[jjj]
+        if (is.na(row.pointer)) {
+          n_from <- nchar(p_from)
+          row.pointer <- which(startsWith(rn, p_from) & (nchar(rn) == n_from | substr(rn, n_from + 1, n_from + 1) == "."))
+        }
+        col.pointer <- m_to[jjj]
+        if (is.na(col.pointer)) {
+          n_to <- nchar(p_to)
+          col.pointer <- which(startsWith(cn, p_to) & (nchar(cn) == n_to | substr(cn, n_to + 1, n_to + 1) == "."))
+        }
+        if (length(row.pointer) > 0 && length(col.pointer) > 0) {
+          matA[row.pointer, col.pointer] <- prior$value[jjj]
+        }
+      }
+    }
+    
+    # Rescale the prior matrix so row sums equal 1 after prior modifications
+    rs <- rowSums(matA)
+    rs[rs == 0] <- 1 # Prevent division by zero
+    matA <- sweep(matA, 1, rs, "/")
+  }
+
+  # Allowed-transition matrix: disallowed pairs become structural zeros (IPF keeps them)
+  n_disallowed <- 0L
+  if (!is.null(disallowed) && nrow(disallowed)) {
+    hit <- disallowed[from_class %in% rownames(matA) & to_class %in% colnames(matA)]
+    if (nrow(hit)) {
+      matA[cbind(match(hit$from_class, rownames(matA)), match(hit$to_class, colnames(matA)))] <- 0
+      n_disallowed <- nrow(hit)
+      rs <- rowSums(matA); rs[rs == 0] <- 1
+      matA <- sweep(matA, 1, rs, "/")
+    }
+  }
+
+  from_vec <- from_std$value
+  to_vec <- to_std$value
+
+  # Filter zero margins
+  nz_from <- which(from_vec > 0)
+  nz_to <- which(to_vec > 0)
+
+  if (length(nz_from) < n || length(nz_to) < n) {
+    matA <- matA[nz_from, nz_to, drop = FALSE]
+    from_vec <- from_vec[nz_from]
+    to_vec <- to_vec[nz_to]
+  }
+
+  if (length(from_vec) == 0 || length(to_vec) == 0) {
+    return(data.table(from_class = character(0), to_class = character(0), value = numeric(0)))
+  }
+
+  # Feasibility of the margins on the cells that may carry flow
+  feas <- check_transport_feasibility(matA > 0, from_vec, to_vec)
+  if (!feas$feasible) {
+    msg <- sprintf("solve_gross_transitions%s: margins cannot be met on the %s transitions (shortfall %.6g of %.6g).",
+                   at, if (is.null(disallowed)) "prior's" else "allowed", feas$shortfall, feas$total)
+    if (!is.null(disallowed) && on_infeasible == "stop") stop(msg, call. = FALSE)
+    warning(msg, call. = FALSE)
+  }
+
+  # Run fienberg rebalancing
+  res <- fienberg(start_mat = matA, target_from = from_vec, target_to = to_vec, tol.margin = tol_margin)
+  diag_row <- data.table(label = label, n_from = length(from_vec), n_to = length(to_vec), n_disallowed = n_disallowed,
+                         feasible = feas$feasible, shortfall = feas$shortfall, iter = res$iter,
+                         stop_reason = res$stop.reason, margin_error = res$margin_error, converged = res$converged)
+  .record_ipf_fit(diag_row)
+  if (!res$converged) {
+    .ipf_registry$warned <- .ipf_registry$warned + 1L
+    if (.ipf_registry$warned <= 10L) {
+      warning(sprintf("solve_gross_transitions%s: fit misses its margins (relative error %.3g after %d iterations; %s)%s",
+                      at, res$margin_error, res$iter, res$stop.reason,
+                      if (.ipf_registry$warned == 10L) " Further warnings suppressed; see ipf_diagnostics()." else ""),
+              call. = FALSE)
+    }
+  }
+
+  # Extract results
+  out_mat <- sweep(res$adjusted_matrix, 1, from_vec, "*")
+  
+  dt_out <- as.data.table(out_mat)
+  dt_out[, from_class := lu_classes[nz_from]]
+  
+  output <- melt(dt_out, id.vars = "from_class", variable.name = "to_class", value.name = "value")
+  output <- output[value > min_cutoff]
+  
+  # Ensure character strings match standard downscalr
+  output[, from_class := as.character(from_class)]
+  output[, to_class := as.character(to_class)]
+  
+  data.table::setattr(output, "ipf_diagnostics", diag_row)
+  return(output)
+}

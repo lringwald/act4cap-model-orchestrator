@@ -28,6 +28,11 @@ RUN if [ -d "/app/.git" ]; then \
     fi \
  && ls -la /app/vendor/Biodiversity_Link/Input/BII_coefs.RData || echo "Biodiversity Link inputs verified"
 
+# Pre-install cascade-core engine so all downstream scripts can access it natively
+RUN if [ -d "/app/vendor/cascade-core" ]; then \
+      R CMD INSTALL /app/vendor/cascade-core; \
+    fi
+
 # Ensure executable permissions for unprivileged cluster runner
 RUN chmod +x /app/entrypoint.sh /app/tools/build_id.sh /app/tools/gen_config.R \
  && chmod -R a+rwX /app
