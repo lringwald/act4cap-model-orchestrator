@@ -174,15 +174,61 @@ run_act4cap_swat_postprocess <- function(model,
   run_py <- file.path(swat_dir, '0_run_pipeline.py')
   if (!file.exists(run_py)) run_py <- file.path(swat_dir, '1_merged_script.py')
 
-  swat_input_root <- if (!is.null(downscale_outputs$out_folder) && dir.exists(downscale_outputs$out_folder)) {
-    parent_dir <- dirname(downscale_outputs$out_folder)
-    if (grepl("^DS_.*AgMIP_", basename(downscale_outputs$out_folder), ignore.case = TRUE) && dir.exists(parent_dir)) {
-      parent_dir
-    } else {
-      downscale_outputs$out_folder
-    }
-  } else {
+  # Resolve ACT4CAP_INPUT_ROOT containing the downscaled model folders and rasters
+  # A valid input root must contain a subfolder matching the model with *_lu_*.tif rasters
+  candidate_input_roots <- c(
+    if (!is.null(downscale_outputs$out_folder)) dirname(downscale_outputs$out_folder) else NULL,
+    if (!is.null(downscale_outputs$out_folder)) downscale_outputs$out_folder else NULL,
+    "/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling",
+    "W:/ACT4CAP-model-pipeline/01_downscaling",
+    "Q:/ACT4CAP-model-pipeline/01_downscaling",
+    "/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs",
+    "P:/globiom/Projects/DS_AgMIP/DS_results/outputs",
+    "/mnt/wdrv/cascade_gamble_outputs",
+    "W:/cascade_gamble_outputs",
+    file.path(out_dir, "..", "01_downscaling"),
     out_dir
+  )
+  candidate_input_roots <- unique(candidate_input_roots[!is.null(candidate_input_roots) & dir.exists(candidate_input_roots)])
+
+  swat_input_root <- NULL
+  target_model_token <- toupper(model)
+
+  for (cand_root in candidate_input_roots) {
+    # Check if cand_root directly contains the model's downscaled tif
+    direct_tifs <- list.files(cand_root, pattern = sprintf("_lu_.*%s.*\\.tiff?$", tolower(scenario)), ignore.case = TRUE)
+    if (length(direct_tifs) == 0) direct_tifs <- list.files(cand_root, pattern = "_lu_.*\\.tiff?$", ignore.case = TRUE)
+    
+    if (length(direct_tifs) > 0 && grepl(target_model_token, basename(cand_root), ignore.case = TRUE)) {
+      swat_input_root <- dirname(cand_root)
+      break
+    }
+    
+    # Check if cand_root has subdirectories matching model containing *_lu_*.tif
+    subdirs <- list.dirs(cand_root, full.names = TRUE, recursive = FALSE)
+    sub_matches <- subdirs[grepl(sprintf("AgMIP_%s", target_model_token), basename(subdirs), ignore.case = TRUE)]
+    if (length(sub_matches) == 0) sub_matches <- subdirs[grepl(target_model_token, basename(subdirs), ignore.case = TRUE)]
+    
+    for (sm in sub_matches) {
+      tifs <- list.files(sm, pattern = sprintf("_lu_.*%s.*\\.tiff?$", tolower(scenario)), ignore.case = TRUE)
+      if (length(tifs) == 0) tifs <- list.files(sm, pattern = "_lu_.*\\.tiff?$", ignore.case = TRUE)
+      if (length(tifs) > 0) {
+        swat_input_root <- cand_root
+        break
+      }
+    }
+    if (!is.null(swat_input_root)) break
+  }
+
+  if (is.null(swat_input_root)) {
+    swat_input_root <- if (dir.exists("/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling")) {
+      "/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling"
+    } else {
+      candidate_input_roots[1]
+    }
+    cli_alert_warning('Could not find existing downscaled GeoTIFF rasters for {toupper(model)}. Checked {length(candidate_input_roots)} candidate directories. Using fallback root: {swat_input_root}')
+  } else {
+    cli_alert_success('Verified downscaled input GeoTIFF root for {toupper(model)}: {swat_input_root}')
   }
 
   Sys.setenv(ACT4CAP_INPUT_ROOT       = swat_input_root)
@@ -231,6 +277,7 @@ run_act4cap_swat_postprocess <- function(model,
   swat_scen_folder <- if (tolower(scenario) %in% c("base", "baseline")) "climate_baseline_landuse_baseline" else paste0("climate_baseline_landuse_", tolower(scenario))
   cand_txtinouts <- c(
     if (nzchar(model_ds_folder)) file.path(swat_out_dir, swat_scen_folder, model_ds_folder, "TxtInOut") else character(0),
+    Sys.glob(file.path(swat_out_dir, swat_scen_folder, paste0("*", toupper(model), "*"), "TxtInOut")),
     Sys.glob(file.path(swat_out_dir, "*", paste0("*", toupper(model), "*"), "TxtInOut")),
     file.path(swat_out_dir, "TxtInOut"),
     txtinout_dir
@@ -238,10 +285,30 @@ run_act4cap_swat_postprocess <- function(model,
   cand_txtinouts <- unique(cand_txtinouts[dir.exists(cand_txtinouts)])
   target_txtinout <- if (length(cand_txtinouts) > 0) cand_txtinouts[1] else txtinout_dir
 
-  wb_file <- file.path(target_txtinout, 'basin_wb_aa.csv')
-  nb_file <- file.path(target_txtinout, 'basin_nb_aa.csv')
-  ls_file <- file.path(target_txtinout, 'basin_ls_aa.csv')
-  sd_file <- file.path(target_txtinout, 'channel_sd_aa.csv')
+  # Archive raw unmanipulated outputs of swatplus.exe into dedicated subfolder
+  raw_out_dir <- if (!is.null(fn$swat$raw_outputs_dir)) fn$swat$raw_outputs_dir else file.path(swat_out_dir, "raw_swatplus_outputs")
+  if (!dir.exists(raw_out_dir)) dir.create(raw_out_dir, recursive = TRUE)
+
+  # Copy all raw csv, log, and done marker files from TxtInOut into raw_swatplus_outputs/
+  raw_files <- list.files(target_txtinout, pattern = "\\.(csv|txt|log|sim|out)$", full.names = TRUE, ignore.case = TRUE)
+  if (length(raw_files) > 0) {
+    file.copy(raw_files, raw_out_dir, overwrite = TRUE)
+    cli_alert_success('Archived {length(raw_files)} raw swatplus.exe output files into: {basename(raw_out_dir)}/')
+  }
+
+  wb_file <- file.path(raw_out_dir, 'basin_wb_aa.csv')
+  nb_file <- file.path(raw_out_dir, 'basin_nb_aa.csv')
+  ls_file <- file.path(raw_out_dir, 'basin_ls_aa.csv')
+  sd_file <- file.path(raw_out_dir, 'channel_sd_aa.csv')
+  if (!file.exists(wb_file)) wb_file <- file.path(target_txtinout, 'basin_wb_aa.csv')
+  if (!file.exists(nb_file)) nb_file <- file.path(target_txtinout, 'basin_nb_aa.csv')
+  if (!file.exists(ls_file)) ls_file <- file.path(target_txtinout, 'basin_ls_aa.csv')
+
+  # Check HRU-level authentic output tables directly from swatplus.exe
+  hru_ls_file <- file.path(raw_out_dir, 'hru_ls_aa.csv')
+  hru_wb_file <- file.path(raw_out_dir, 'hru_wb_aa.csv')
+  if (!file.exists(hru_ls_file)) hru_ls_file <- file.path(target_txtinout, 'hru_ls_aa.csv')
+  if (!file.exists(hru_wb_file)) hru_wb_file <- file.path(target_txtinout, 'hru_wb_aa.csv')
 
   if (!file.exists(wb_file) || !file.exists(nb_file) || !file.exists(ls_file)) {
     stop(cli::format_error(c(
@@ -276,6 +343,32 @@ run_act4cap_swat_postprocess <- function(model,
   cli_alert_success('Authentic SWAT+ Basin Responses: Runoff Ratio={runoff_ratio}, Water Yield={round(flo_val, 1)} mm, N Leaching={round(n_leach_val, 2)} kg/ha, P Runoff={round(p_runoff_val, 2)} kg/ha, Sediment={round(sed_val, 2)} t/ha')
 
   # 5. Synthesize Regional Summary Table Anchored on Authentic Model Outputs
+  # If HRU-level authentic outputs exist, compute mass balances anchored directly on HRU simulation tables
+  if (file.exists(hru_ls_file) && file.exists(hru_wb_file)) {
+    cli_alert_info('Parsing authentic HRU-level simulation outputs from {basename(hru_ls_file)} and {basename(hru_wb_file)}...')
+    hru_ls_dt <- fread(hru_ls_file, fill = TRUE)
+    hru_wb_dt <- fread(hru_wb_file, fill = TRUE)
+    setnames(hru_ls_dt, tolower(names(hru_ls_dt)))
+    setnames(hru_wb_dt, tolower(names(hru_wb_dt)))
+    
+    if ('no3_gw' %in% names(hru_ls_dt)) {
+      n_hru <- mean(hru_ls_dt$no3_gw, na.rm = TRUE)
+      if (is.finite(n_hru) && n_hru > 0) n_leach_val <- n_hru
+    }
+    if ('p_sol' %in% names(hru_ls_dt)) {
+      p_hru <- mean(hru_ls_dt$p_sol, na.rm = TRUE)
+      if (is.finite(p_hru) && p_hru > 0) p_runoff_val <- p_hru
+    }
+    if ('sed' %in% names(hru_ls_dt)) {
+      sed_hru <- mean(hru_ls_dt$sed, na.rm = TRUE)
+      if (is.finite(sed_hru) && sed_hru > 0) sed_val <- sed_hru
+    }
+    if ('flo' %in% names(hru_wb_dt)) {
+      flo_hru <- mean(hru_wb_dt$flo, na.rm = TRUE)
+      if (is.finite(flo_hru) && flo_hru > 0) flo_val <- flo_hru
+    }
+  }
+
   swat_summary <- lu_dt[, .(
     total_area_km2        = round(sum(crp_area_km2, na.rm = TRUE), 2),
     mean_runoff_coef      = runoff_ratio,

@@ -276,15 +276,17 @@ construct_act4cap_output_filenames <- function(model,
     # SWAT+ Water Quality
     # Regional summary: .csv
     # Pixel / cell-level table: .parquet
+    # Raw swatplus.exe outputs: raw_swatplus_outputs/
     swat = list(
-      dir_name      = "water_quality",
-      dir_path      = swat_out_dir,
-      summary_csv   = file.path(swat_out_dir, sprintf("swat_plus_water_quality_summary_%s.csv", tag)),
-      cell_parquet  = swat_cell_parquet,
-      cell_file     = swat_cell_parquet,
-      cell_csv      = swat_cell_parquet, # backwards compatible alias
-      composite_rds = file.path(swat_out_dir, sprintf("swat_plus_composite_%s.rds", tag)),
-      raster_prefix = sprintf("swat_%s", tag)
+      dir_name        = "water_quality",
+      dir_path        = swat_out_dir,
+      raw_outputs_dir = file.path(swat_out_dir, "raw_swatplus_outputs"),
+      summary_csv     = file.path(swat_out_dir, sprintf("swat_plus_water_quality_summary_%s.csv", tag)),
+      cell_parquet    = swat_cell_parquet,
+      cell_file       = swat_cell_parquet,
+      cell_csv        = swat_cell_parquet, # backwards compatible alias
+      composite_rds   = file.path(swat_out_dir, sprintf("swat_plus_composite_%s.rds", tag)),
+      raster_prefix   = sprintf("swat_%s", tag)
     ),
     
     # Biodiversity Link
