@@ -187,10 +187,6 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
       file.path("/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
       file.path(out_dir, "downscaling", downscale_output),
       file.path(out_dir, downscale_output),
-      file.path("T:/cascade_gamble_outputs", downscale_output),
-      file.path("W:/cascade_gamble_outputs", downscale_output),
-      file.path("/mnt/wdrv/cascade_gamble_outputs", downscale_output),
-      file.path(out_dir, "..", "cascade_gamble_outputs", downscale_output),
       downscale_output
     )
     for (tc in target_cands) {
@@ -249,11 +245,7 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
     "W:/ACT4CAP-model-pipeline/03_outputs/downscaling",
     "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling",
     file.path(out_dir, "downscaling"),
-    out_dir,
-    "T:/cascade_gamble_outputs",
-    "W:/cascade_gamble_outputs",
-    "/mnt/wdrv/cascade_gamble_outputs",
-    file.path(out_dir, "..", "cascade_gamble_outputs")
+    out_dir
   )
   search_roots <- search_roots[dir.exists(search_roots)]
   cands <- character(0)
@@ -438,11 +430,16 @@ run_act4cap_cascade_downscaling <- function(model,
   if (file.exists(script_cand)) {
     res_code <- system(cmd)
     if (res_code != 0) {
-      cli_alert_warning('Downscaling command exited with code {res_code}. Falling back to locate_existing_downscaling...')
+      stop(sprintf('Cascade downscaling execution failed with exit code %s inside %s. Pre-computed fallback is prohibited under Data Integrity rules.', res_code, valid_gamble))
     }
+  } else {
+    stop(sprintf('Cascade downscaling script "%s" not found inside %s.', script_cand, valid_gamble))
   }
   
   res <- locate_existing_downscaling(model, scenario, out_dir, gamble_dir)
+  if (is.null(res$lu_file) || !file.exists(res$lu_file)) {
+    stop(sprintf('Cascade downscaling finished but no output land-use file could be found in %s.', out_dir))
+  }
   res$input_vintage <- vintage_info
   return(res)
 }

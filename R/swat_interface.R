@@ -188,11 +188,6 @@ run_act4cap_swat_postprocess <- function(model,
     "W:/ACT4CAP-model-pipeline/03_outputs/downscaling",
     "Q:/ACT4CAP-model-pipeline/03_outputs/downscaling",
     file.path(out_dir, "downscaling"),
-    "/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs",
-    "P:/globiom/Projects/DS_AgMIP/DS_results/outputs",
-    "T:/cascade_gamble_outputs",
-    "/mnt/wdrv/cascade_gamble_outputs",
-    "W:/cascade_gamble_outputs",
     out_dir
   )
   candidate_input_roots <- unique(candidate_input_roots[!is.null(candidate_input_roots) & dir.exists(candidate_input_roots)])
