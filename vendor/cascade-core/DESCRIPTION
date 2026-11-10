@@ -13,6 +13,8 @@ Imports:
     data.table,
     cli,
     terra,
+    nloptr,
+    progress,
     Rcpp
 LinkingTo: Rcpp
 Suggests:

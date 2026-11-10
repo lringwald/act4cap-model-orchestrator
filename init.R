@@ -17,7 +17,7 @@ if (!.configured) {
           else c(CRAN = 'https://cloud.r-project.org/'))
 }
 
-PKGS <- c('data.table', 'terra', 'sf', 'arrow', 'qs2', 'jsonlite', 'cli', 'yaml', 'optparse', 'devtools', 'Rcpp')
+PKGS <- c('data.table', 'terra', 'sf', 'arrow', 'qs2', 'jsonlite', 'cli', 'yaml', 'optparse', 'devtools', 'Rcpp', 'nloptr', 'progress', 'withr')
 miss <- PKGS[!vapply(PKGS, requireNamespace, logical(1), quietly = TRUE)]
 if (length(miss)) {
   message('>>> installing: ', paste(miss, collapse = ', '))
