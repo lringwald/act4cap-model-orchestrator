@@ -183,16 +183,16 @@ run_act4cap_swat_postprocess <- function(model,
   candidate_input_roots <- c(
     if (!is.null(downscale_outputs$out_folder)) dirname(downscale_outputs$out_folder) else NULL,
     if (!is.null(downscale_outputs$out_folder)) downscale_outputs$out_folder else NULL,
-    "T:/ACT4CAP-model-pipeline/01_downscaling",
-    "/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling",
-    "W:/ACT4CAP-model-pipeline/01_downscaling",
-    "Q:/ACT4CAP-model-pipeline/01_downscaling",
+    "T:/ACT4CAP-model-pipeline/03_outputs/downscaling",
+    "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling",
+    "W:/ACT4CAP-model-pipeline/03_outputs/downscaling",
+    "Q:/ACT4CAP-model-pipeline/03_outputs/downscaling",
+    file.path(out_dir, "downscaling"),
     "/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs",
     "P:/globiom/Projects/DS_AgMIP/DS_results/outputs",
     "T:/cascade_gamble_outputs",
     "/mnt/wdrv/cascade_gamble_outputs",
     "W:/cascade_gamble_outputs",
-    file.path(out_dir, "..", "01_downscaling"),
     out_dir
   )
   candidate_input_roots <- unique(candidate_input_roots[!is.null(candidate_input_roots) & dir.exists(candidate_input_roots)])
@@ -227,8 +227,8 @@ run_act4cap_swat_postprocess <- function(model,
   }
 
   if (is.null(swat_input_root)) {
-    swat_input_root <- if (dir.exists("/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling")) {
-      "/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling"
+    swat_input_root <- if (dir.exists("/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling")) {
+      "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling"
     } else {
       candidate_input_roots[1]
     }

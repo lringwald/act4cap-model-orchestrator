@@ -182,14 +182,14 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
   # 1. If explicit downscale_output folder or file was selected from target folder dropdown
   if (!is.null(downscale_output) && nzchar(downscale_output) && downscale_output != "auto" && downscale_output != "none") {
     target_cands <- c(
-      file.path("T:/ACT4CAP-model-pipeline/01_downscaling", downscale_output),
-      file.path("W:/ACT4CAP-model-pipeline/01_downscaling", downscale_output),
-      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling", downscale_output),
-      file.path(out_dir, "..", "01_downscaling", downscale_output),
+      file.path("T:/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
+      file.path("W:/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
+      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
+      file.path(out_dir, "downscaling", downscale_output),
+      file.path(out_dir, downscale_output),
       file.path("T:/cascade_gamble_outputs", downscale_output),
       file.path("W:/cascade_gamble_outputs", downscale_output),
       file.path("/mnt/wdrv/cascade_gamble_outputs", downscale_output),
-      file.path(out_dir, downscale_output),
       file.path(out_dir, "..", "cascade_gamble_outputs", downscale_output),
       downscale_output
     )
@@ -242,13 +242,13 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
     ))
   }
 
-  # 2. Look in out_dir, 01_downscaling, and legacy cluster paths (.parquet or .csv)
+  # 2. Look in 03_outputs/downscaling and out_dir (.parquet or .csv)
   pat <- sprintf('DS_.*AgMIP_%s_.*_lu.*\\.(parquet|csv)$', toupper(model))
   search_roots <- c(
-    "T:/ACT4CAP-model-pipeline/01_downscaling",
-    "W:/ACT4CAP-model-pipeline/01_downscaling",
-    "/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling",
-    file.path(out_dir, "..", "01_downscaling"),
+    "T:/ACT4CAP-model-pipeline/03_outputs/downscaling",
+    "W:/ACT4CAP-model-pipeline/03_outputs/downscaling",
+    "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling",
+    file.path(out_dir, "downscaling"),
     out_dir,
     "T:/cascade_gamble_outputs",
     "W:/cascade_gamble_outputs",
@@ -335,6 +335,9 @@ run_act4cap_cascade_downscaling <- function(model,
   # 2. Check if gamble-cascade / cascadinggamble-core exists
   cand_paths <- c(
     gamble_dir,
+    'T:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
+    '/mnt/wdrv/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
+    'W:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
     'g:/My Drive/R/gamble-cascade',
     'g:/My Drive/R/cascadinggamble-core',
     '../gamble-cascade',

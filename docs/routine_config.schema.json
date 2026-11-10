@@ -44,7 +44,7 @@
       "DOWNSCALE_OUTPUT": {
         "type": "string",
         "title": "Precomputed Downscaling in Target Folder",
-        "description": "Precomputed Downscaling in Target Folder -- Select an available pre-computed 10km downscaling output from the target folder (01_downscaling), or 'auto' to automatically match the selected macro model and scenario, or 'none' to force fresh spatial mediation.",
+        "description": "Precomputed Downscaling in Target Folder -- Select an available pre-computed 10km downscaling output from the target folder (03_outputs/downscaling), or 'auto' to automatically match the selected macro model and scenario, or 'none' to force fresh spatial mediation.",
         "default": "auto",
         "enum": ["auto", "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001", "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_TRIAL", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001", "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001", "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001", "none"]
       },
@@ -152,7 +152,7 @@
       "WORK_DIR": {
         "type": "string",
         "title": "Persistent Storage Mount (FUSE)",
-        "description": "Persistent Storage Mount (FUSE) -- The unified ACT4CAP-model-pipeline root on the cluster FUSE mount (/mnt/wdrv/ACT4CAP-model-pipeline or W:/ACT4CAP-model-pipeline) housing 00_inputs, 01_downscaling, 02_postmodels, and 03_outputs.",
+        "description": "Persistent Storage Mount (FUSE) -- The unified ACT4CAP-model-pipeline root on the cluster FUSE mount (/mnt/wdrv/ACT4CAP-model-pipeline or W:/ACT4CAP-model-pipeline) housing 00_inputs, 01_interimmodel, 02_postmodels, and 03_outputs.",
         "default": "/mnt/wdrv/ACT4CAP-model-pipeline"
       },
       "OUTPUT_DIR": {

@@ -89,9 +89,10 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
   mkdir -p "$WORK_DIR/00_inputs/macro_models" \
            "$WORK_DIR/00_inputs/swatplus_assets" \
            "$WORK_DIR/00_inputs/biodiversity_assets" \
-           "$WORK_DIR/01_downscaling" \
+           "$WORK_DIR/01_interimmodel/gamble-cascade" \
            "$WORK_DIR/02_postmodels/swatplus" \
            "$WORK_DIR/02_postmodels/biodiversity_link" \
+           "$WORK_DIR/03_outputs/downscaling" \
            "$WORK_DIR/$OUTPUT_DIR" \
            "$WORK_DIR/99_archive" \
            "$WORK_DIR/logs"
@@ -103,8 +104,12 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
       rm -rf /mnt/wdrv/model_outputs 2>/dev/null || true
     fi
     if [ -d "/mnt/wdrv/cascade_gamble_outputs" ]; then
-      cp -rn /mnt/wdrv/cascade_gamble_outputs/* "$WORK_DIR/01_downscaling/" 2>/dev/null || true
+      cp -rn /mnt/wdrv/cascade_gamble_outputs/* "$WORK_DIR/03_outputs/downscaling/" 2>/dev/null || true
       rm -rf /mnt/wdrv/cascade_gamble_outputs 2>/dev/null || true
+    fi
+    if [ -d "$WORK_DIR/01_downscaling" ]; then
+      cp -rn "$WORK_DIR/01_downscaling/"* "$WORK_DIR/03_outputs/downscaling/" 2>/dev/null || true
+      rm -rf "$WORK_DIR/01_downscaling" 2>/dev/null || true
     fi
     if [ -d "/mnt/wdrv/swatplus_runs/default_hru_shp" ]; then
       mkdir -p "$WORK_DIR/00_inputs/swatplus_assets/default_hru_shp"

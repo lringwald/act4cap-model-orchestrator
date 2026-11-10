@@ -66,7 +66,17 @@ POSTMODEL_MODE   <- tolower(get_param('POSTMODEL_MODE', 'full'))
 # Auto-resolve downscaling suite directory
 gamble_dir_resolved <- GAMBLE_DIR
 if (!dir.exists(gamble_dir_resolved)) {
-  for (cand in c('g:/My Drive/R/gamble-cascade', 'g:/My Drive/R/cascadinggamble-core', 'Q:/gamble-cascade', 'Q:/cascadinggamble-core', '../gamble-cascade', '../cascadinggamble-core')) {
+  for (cand in c(
+    'T:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
+    '/mnt/wdrv/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
+    'W:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
+    'g:/My Drive/R/gamble-cascade',
+    'g:/My Drive/R/cascadinggamble-core',
+    'Q:/gamble-cascade',
+    'Q:/cascadinggamble-core',
+    '../gamble-cascade',
+    '../cascadinggamble-core'
+  )) {
     if (dir.exists(cand)) { gamble_dir_resolved <- cand; break }
   }
 }
