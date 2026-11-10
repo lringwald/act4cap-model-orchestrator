@@ -1,6 +1,3 @@
 [submodule ".rules-hub"]
 	path = .rules-hub
 	url = https://github.com/lringwald/agent-rules-hub.git
-[submodule "vendor/Biodiversity_Link"]
-	path = vendor/Biodiversity_Link
-	url = https://github.com/iiasa/Biodiversity_Link.git

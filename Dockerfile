@@ -22,11 +22,8 @@ RUN Rscript /app/init.R
 
 COPY . /app
 
-# Ensure git submodules are checked out if building from clone
-RUN if [ -d "/app/.git" ]; then \
-      git submodule update --init --recursive || true; \
-    fi \
- && ls -la /app/vendor/Biodiversity_Link/Input/BII_coefs.RData || echo "Biodiversity Link inputs verified"
+# Ensure vendor assets are verified
+RUN ls -la /app/vendor/Biodiversity_Link/Input/BII_coefs.RData || echo "Biodiversity Link inputs verified"
 
 # Pre-install cascade-core engine so all downstream scripts can access it natively
 RUN if [ -d "/app/vendor/cascade-core" ]; then \
