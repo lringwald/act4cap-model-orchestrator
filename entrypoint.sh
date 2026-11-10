@@ -103,14 +103,6 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
       cp -rn /mnt/wdrv/model_outputs/* "$WORK_DIR/00_inputs/macro_models/" 2>/dev/null || true
       rm -rf /mnt/wdrv/model_outputs 2>/dev/null || true
     fi
-    if [ -d "/mnt/wdrv/cascade_gamble_outputs" ]; then
-      cp -rn /mnt/wdrv/cascade_gamble_outputs/* "$WORK_DIR/03_outputs/downscaling/" 2>/dev/null || true
-      rm -rf /mnt/wdrv/cascade_gamble_outputs 2>/dev/null || true
-    fi
-    if [ -d "$WORK_DIR/01_downscaling" ]; then
-      cp -rn "$WORK_DIR/01_downscaling/"* "$WORK_DIR/03_outputs/downscaling/" 2>/dev/null || true
-      rm -rf "$WORK_DIR/01_downscaling" 2>/dev/null || true
-    fi
     if [ -d "/mnt/wdrv/swatplus_runs/default_hru_shp" ]; then
       mkdir -p "$WORK_DIR/00_inputs/swatplus_assets/default_hru_shp"
       cp -rn /mnt/wdrv/swatplus_runs/default_hru_shp/* "$WORK_DIR/00_inputs/swatplus_assets/default_hru_shp/" 2>/dev/null || true
