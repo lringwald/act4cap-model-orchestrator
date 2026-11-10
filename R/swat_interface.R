@@ -95,10 +95,12 @@ run_act4cap_swat_postprocess <- function(model,
   if (!dir.exists(swat_dir)) {
     # Check alternate local mounts
     for (cand in c(
+      'T:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
       '/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus',
       'W:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
       'Q:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
       'g:/My Drive/R/act4cap-swatplus',
+      'T:/swatplus_runs',
       'W:/swatplus_runs',
       'Q:/swatplus_runs',
       '/mnt/wdrv/swatplus_runs',
@@ -111,10 +113,12 @@ run_act4cap_swat_postprocess <- function(model,
   # Resolve DEFAULTS_DIR (00_inputs/swatplus_assets/default_hru_shp or swat_dir/default_hru_shp)
   defaults_dir <- file.path(swat_dir, 'default_hru_shp')
   for (dc in c(
+    'T:/ACT4CAP-model-pipeline/00_inputs/swatplus_assets/default_hru_shp',
     '/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/swatplus_assets/default_hru_shp',
     'W:/ACT4CAP-model-pipeline/00_inputs/swatplus_assets/default_hru_shp',
     'Q:/ACT4CAP-model-pipeline/00_inputs/swatplus_assets/default_hru_shp',
     file.path(swat_dir, 'default_hru_shp'),
+    'T:/swatplus_runs/default_hru_shp',
     '/mnt/wdrv/swatplus_runs/default_hru_shp',
     'W:/swatplus_runs/default_hru_shp'
   )) {
@@ -179,11 +183,13 @@ run_act4cap_swat_postprocess <- function(model,
   candidate_input_roots <- c(
     if (!is.null(downscale_outputs$out_folder)) dirname(downscale_outputs$out_folder) else NULL,
     if (!is.null(downscale_outputs$out_folder)) downscale_outputs$out_folder else NULL,
+    "T:/ACT4CAP-model-pipeline/01_downscaling",
     "/mnt/wdrv/ACT4CAP-model-pipeline/01_downscaling",
     "W:/ACT4CAP-model-pipeline/01_downscaling",
     "Q:/ACT4CAP-model-pipeline/01_downscaling",
     "/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs",
     "P:/globiom/Projects/DS_AgMIP/DS_results/outputs",
+    "T:/cascade_gamble_outputs",
     "/mnt/wdrv/cascade_gamble_outputs",
     "W:/cascade_gamble_outputs",
     file.path(out_dir, "..", "01_downscaling"),

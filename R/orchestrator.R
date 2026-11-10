@@ -74,16 +74,23 @@ if (!dir.exists(gamble_dir_resolved)) {
 # Auto-resolve SWAT+ directory across cluster and Windows mount points
 swat_dir_resolved <- SWATPLUS_DIR
 if (startsWith(swat_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows") {
-  mapped_swat <- sub("^/mnt/wdrv/?", "W:/", swat_dir_resolved)
-  if (dir.exists(mapped_swat)) swat_dir_resolved <- mapped_swat
+  mapped_swat_t <- sub("^/mnt/wdrv/?", "T:/", swat_dir_resolved)
+  mapped_swat_w <- sub("^/mnt/wdrv/?", "W:/", swat_dir_resolved)
+  if (dir.exists(mapped_swat_t)) {
+    swat_dir_resolved <- mapped_swat_t
+  } else if (dir.exists(mapped_swat_w)) {
+    swat_dir_resolved <- mapped_swat_w
+  }
 }
 if (!dir.exists(swat_dir_resolved)) {
   for (cand in c(
+    'T:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
     '/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus',
     'W:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
     'Q:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
     'g:/My Drive/R/act4cap-swatplus',
     '../act4cap-swatplus',
+    'T:/swatplus_runs',
     '/mnt/wdrv/swatplus_runs',
     'W:/swatplus_runs',
     'Q:/swatplus_runs',
@@ -152,14 +159,22 @@ cli_alert_info('Agent Rules:       agent-rules-hub (active & synced from https:/
 
 work_dir_resolved <- WORK_DIR
 if (startsWith(work_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows") {
+  mapped_t <- sub("^/mnt/wdrv/?", "T:/", work_dir_resolved)
   mapped_w <- sub("^/mnt/wdrv/?", "W:/", work_dir_resolved)
-  if (!dir.exists(mapped_w)) tryCatch(dir.create(mapped_w, recursive = TRUE), error = function(e) NULL)
-  if (dir.exists(mapped_w)) {
+  if (dir.exists(mapped_t)) {
+    cli_alert_success("Windows host detected: mapped cluster mount {WORK_DIR} to project drive {mapped_t}")
+    work_dir_resolved <- mapped_t
+  } else if (dir.exists(mapped_w)) {
     cli_alert_success("Windows host detected: mapped cluster mount {WORK_DIR} to accelerator drive {mapped_w}")
     work_dir_resolved <- mapped_w
-  } else {
-    cli_alert_info("Windows host detected with cluster mount path {WORK_DIR}. Using local workspace outputs.")
-    work_dir_resolved <- "."
+  } else if (!dir.exists(mapped_t) && !dir.exists(mapped_w)) {
+    tryCatch(dir.create(mapped_t, recursive = TRUE), error = function(e) NULL)
+    if (dir.exists(mapped_t)) {
+      work_dir_resolved <- mapped_t
+    } else {
+      cli_alert_info("Windows host detected with cluster mount path {WORK_DIR}. Using local workspace outputs.")
+      work_dir_resolved <- "."
+    }
   }
 } else if (startsWith(work_dir_resolved, "/mnt") && .Platform$OS.type == "windows") {
   cli_alert_info("Windows host detected with cluster mount path {WORK_DIR}. Using local workspace outputs.")
