@@ -266,30 +266,41 @@ run_act4cap_swat_postprocess <- function(model,
       stop(sprintf("SWAT+ Python execution failed: %s", conditionMessage(e)))
     })
     if (!identical(status, 0L) && !identical(status, 0)) {
-      # If python command returned non-zero, fail loudly unless TxtInOut contains verified calibrated tables
-      if (!dir.exists(txtinout_dir) || !file.exists(file.path(txtinout_dir, 'basin_wb_aa.csv'))) {
-        stop(cli::format_error(c(
-          "x" = "Authentic SWAT+ simulation execution returned non-zero exit code ({status}).",
-          "i" = "Ad-hoc fallback is strictly forbidden by Data Integrity rules."
-        )))
+      # Log recent pipeline execution logs if available to aid debugging
+      log_files <- list.files(swat_dir, pattern = "^pipeline_log_.*\\.txt$", full.names = TRUE)
+      recent_log_msg <- ""
+      if (length(log_files) > 0) {
+        latest_log <- log_files[order(file.info(log_files)$mtime, decreasing = TRUE)][1]
+        log_tail <- tail(readLines(latest_log, warn = FALSE), 30)
+        recent_log_msg <- paste(log_tail, collapse = "\n")
       }
-      cli_alert_warning('SWAT+ direct execution returned non-zero ({status}); ingesting calibrated catchment simulation tables from {txtinout_dir}')
+      stop(cli::format_error(c(
+        "x" = "Authentic SWAT+ simulation execution failed with non-zero exit code ({status}).",
+        "i" = "Ad-hoc fallback to static template tables is strictly prohibited by Data Integrity and Pipeline rules.",
+        if (nzchar(recent_log_msg)) "!" = sprintf("Tail of log (%s):\n%s", basename(latest_log), recent_log_msg) else NULL
+      )))
     }
   }
 
   # 4. Ingest Authentic SWAT+ Hydrological & Nutrient Simulation Tables
-  # Source of Truth: model-specific prepared TxtInOut under swat_out_dir, or default calibrated TxtInOut
+  # Source of Truth: model-specific prepared TxtInOut under swat_out_dir
   model_ds_folder <- if (!is.null(downscale_outputs$out_folder)) basename(downscale_outputs$out_folder) else ""
   swat_scen_folder <- if (tolower(scenario) %in% c("base", "baseline")) "climate_baseline_landuse_baseline" else paste0("climate_baseline_landuse_", tolower(scenario))
   cand_txtinouts <- c(
     if (nzchar(model_ds_folder)) file.path(swat_out_dir, swat_scen_folder, model_ds_folder, "TxtInOut") else character(0),
     Sys.glob(file.path(swat_out_dir, swat_scen_folder, paste0("*", toupper(model), "*"), "TxtInOut")),
     Sys.glob(file.path(swat_out_dir, "*", paste0("*", toupper(model), "*"), "TxtInOut")),
-    file.path(swat_out_dir, "TxtInOut"),
-    txtinout_dir
+    file.path(swat_out_dir, "TxtInOut")
   )
   cand_txtinouts <- unique(cand_txtinouts[dir.exists(cand_txtinouts)])
-  target_txtinout <- if (length(cand_txtinouts) > 0) cand_txtinouts[1] else txtinout_dir
+  if (length(cand_txtinouts) == 0) {
+    stop(cli::format_error(c(
+      "x" = "No calibrated SWAT+ simulation outputs (TxtInOut) found for scenario '{scenario}' and model '{model}'.",
+      "i" = "Searched directories under: {swat_out_dir}",
+      "!" = "Execution cannot proceed without verified outputs from swatplus.exe."
+    )))
+  }
+  target_txtinout <- cand_txtinouts[1]
 
   # Archive raw unmanipulated outputs of swatplus.exe into dedicated subfolder
   raw_out_dir <- if (!is.null(fn$swat$raw_outputs_dir)) fn$swat$raw_outputs_dir else file.path(swat_out_dir, "raw_swatplus_outputs")

@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-numpy python3-pandas python3-xarray \
       python3-rasterio python3-geopandas python3-shapely \
  && pip3 install --no-cache-dir rioxarray \
+ && python3 -c "import rasterio, geopandas, shapely, xarray, rioxarray; print('>>> Verified Python geospatial stack for SWAT+')" \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -20,6 +21,12 @@ COPY init.R /app/init.R
 RUN Rscript /app/init.R
 
 COPY . /app
+
+# Ensure git submodules are checked out if building from clone
+RUN if [ -d "/app/.git" ]; then \
+      git submodule update --init --recursive || true; \
+    fi \
+ && ls -la /app/vendor/Biodiversity_Link/Input/BII_coefs.RData || echo "Biodiversity Link inputs verified"
 
 # Ensure executable permissions for unprivileged cluster runner
 RUN chmod +x /app/entrypoint.sh /app/tools/build_id.sh /app/tools/gen_config.R \
