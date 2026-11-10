@@ -31,6 +31,13 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
       file.path(input_dir, model, input_file),
       file.path(input_dir, "merged", input_file),
       file.path(input_dir, input_file),
+      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models/merged", input_file),
+      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models", model, input_file),
+      file.path("/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models", input_file),
+      file.path("T:/ACT4CAP-model-pipeline/00_inputs/macro_models/merged", input_file),
+      file.path("T:/ACT4CAP-model-pipeline/00_inputs/macro_models", model, input_file),
+      file.path("T:/ACT4CAP-model-pipeline/00_inputs/macro_models", input_file),
+      file.path(input_dir, input_file),
       file.path("T:/ACT4CAP-model-pipeline/00_inputs/macro_models", model, input_file),
       file.path("T:/ACT4CAP-model-pipeline/00_inputs/macro_models/merged", input_file),
       file.path("T:/ACT4CAP-model-pipeline/00_inputs/macro_models", input_file),
@@ -62,7 +69,7 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
         ))
       }
     }
-    cli_alert_warning('Specified INPUT_FILE {input_file} not found. Attempting automatic detection of latest vintage...')
+    cli_alert_danger('Specified INPUT_FILE {input_file} not found.'); stop('Specified INPUT_FILE not found')
   }
 
   # Automatic detection: scan directories for latest vintage matching macro model
@@ -128,12 +135,7 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
     ))
   }
 
-  cli_alert_info('No external vintage found for {toupper(model)}. Falling back to default built-in vintage.')
-  return(list(
-    path = sprintf("20260428_compr_scens_merge_%s.csv", toupper(model)),
-    name = sprintf("20260428_compr_scens_merge_%s.csv", toupper(model)),
-    source = "builtin_default"
-  ))
+  stop(sprintf("No external macro model vintage found for %s. Fallback to default vintage is prohibited by Data Integrity rules.", toupper(model)))
 }
 
 ensure_downscale_parquet <- function(lu_file, model, scenario, out_dir) {
@@ -343,8 +345,7 @@ run_act4cap_cascade_downscaling <- function(model,
   valid_gamble <- cand_paths[dir.exists(cand_paths)][1]
   
   if (is.na(valid_gamble) || is.null(valid_gamble)) {
-    cli_alert_warning('Cascade downscaling directory not found. Checking existing pre-computed outputs...')
-    return(locate_existing_downscaling(model, scenario, out_dir, gamble_dir))
+    stop('Cascade downscaling directory not found. Pre-computed fallback is prohibited.')
   }
   
   # 3. In trial mode, generate standardized lightweight test slice (.parquet standard)
