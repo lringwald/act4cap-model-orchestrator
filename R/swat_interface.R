@@ -269,15 +269,19 @@ run_act4cap_swat_postprocess <- function(model,
       # Log recent pipeline execution logs if available to aid debugging
       log_files <- list.files(swat_dir, pattern = "^pipeline_log_.*\\.txt$", full.names = TRUE)
       recent_log_msg <- ""
+      latest_log_name <- ""
       if (length(log_files) > 0) {
         latest_log <- log_files[order(file.info(log_files)$mtime, decreasing = TRUE)][1]
+        latest_log_name <- basename(latest_log)
         log_tail <- tail(readLines(latest_log, warn = FALSE), 30)
-        recent_log_msg <- paste(log_tail, collapse = "\n")
+        # Escape curly braces to avoid cli::format_error evaluating Python expressions like {not_found}
+        safe_tail <- gsub("\\{", "{{", gsub("\\}", "}}", log_tail))
+        recent_log_msg <- paste(safe_tail, collapse = "\n")
       }
       stop(cli::format_error(c(
         "x" = "Authentic SWAT+ simulation execution failed with non-zero exit code ({status}).",
         "i" = "Ad-hoc fallback to static template tables is strictly prohibited by Data Integrity and Pipeline rules.",
-        if (nzchar(recent_log_msg)) "!" = sprintf("Tail of log (%s):\n%s", basename(latest_log), recent_log_msg) else NULL
+        if (nzchar(recent_log_msg)) "!" = sprintf("Tail of log (%s):\n%s", latest_log_name, recent_log_msg) else NULL
       )))
     }
   }
