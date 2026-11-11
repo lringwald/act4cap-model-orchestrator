@@ -406,7 +406,9 @@ run_act4cap_cascade_downscaling <- function(model,
     'scripts/run_downscaling.R'
   }
 
-  cmd <- sprintf('Rscript %s %s %s "%s" "%s"', script_cand, model, scenario, vintage_info$name, out_dir)
+  temp_dir_out <- file.path(out_dir, "intermediate")
+  if (!dir.exists(temp_dir_out)) dir.create(temp_dir_out, recursive = TRUE, showWarnings = FALSE)
+  cmd <- sprintf('Rscript %s %s %s "%s" "%s" "%s"', script_cand, model, scenario, vintage_info$name, out_dir, temp_dir_out)
   cli_alert_info('Executing: {cmd} inside {valid_gamble} (Input vintage: {vintage_info$name})')
   old_wd <- getwd()
   on.exit(setwd(old_wd))
@@ -419,8 +421,8 @@ run_act4cap_cascade_downscaling <- function(model,
   Sys.setenv(INPUT_FILE = vintage_info$name)
   Sys.setenv(AGMIP_OUTPUT_DIR = out_dir)
   Sys.setenv(OUTPUT_DIR = out_dir)
-  Sys.setenv(AGMIP_TEMP_DIR = file.path(out_dir, "intermediate"))
-  Sys.setenv(TEMP_DIR = file.path(out_dir, "intermediate"))
+  Sys.setenv(AGMIP_TEMP_DIR = temp_dir_out)
+  Sys.setenv(TEMP_DIR = temp_dir_out)
   Sys.setenv(RESOLUTION = resolution)
   Sys.setenv(NCORES = as.character(ncores))
   # Point CASCADE_CORE_PATH to the installed package in the container to bypass FUSE compilation/io issues

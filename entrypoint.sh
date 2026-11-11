@@ -57,7 +57,7 @@ for v in TRIAL FORCE; do
   if off "${!v:-}"; then export "$v=0"; else export "$v=1"; fi
 done
 
-export TASK MACRO_MODEL INPUT_FILE CUSTOM_INPUT_FILE DOWNSCALE_OUTPUT SCENARIO POSTMODELS RUN_SWAT RUN_BIODIVERSITY YEARS RESOLUTION NCORES WORK_DIR OUTPUT_DIR INPUT_DIR CASCADING_GAMBLE_DIR SWATPLUS_DIR BIODIVERSITY_LINK_DIR BIODIVERSITY_MAPPING_FILE POSTMODEL_MODE TRIAL FORCE
+export TASK MACRO_MODEL INPUT_FILE CUSTOM_INPUT_FILE DOWNSCALE_OUTPUT SCENARIO POSTMODELS RUN_SWAT RUN_BIODIVERSITY YEARS RESOLUTION NCORES WORK_DIR OUTPUT_DIR INPUT_DIR CASCADING_GAMBLE_DIR CASCADE_ENGINE_SOURCE SWATPLUS_DIR BIODIVERSITY_LINK_DIR BIODIVERSITY_MAPPING_FILE POSTMODEL_MODE TRIAL FORCE RUN_DATE VERSION_TAG
 
 if ! is_task "$TASK"; then
   echo "ERROR: unknown TASK '$TASK'. Allowed: $TASKS" >&2; exit 1
@@ -104,12 +104,22 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
   if [ "$SNAPSHOT_MODE" = "live" ] || [ "$SNAPSHOT_MODE" = "freeze" ]; then
     echo ">>> Refreshing live gamble-cascade and engine submodules from GitHub into /tmp/gamble-live..."
     rm -rf /tmp/gamble-live 2>/dev/null || true
-    if git clone --depth 1 --recursive https://github.com/lringwald/gamble-cascade.git /tmp/gamble-live 2>/dev/null; then
-      mkdir -p "$GAMBLE_TARGET"
-      # Overlay git-tracked codebase while preserving any data directories on the persistent cluster mount
-      cp -rf /tmp/gamble-live/* "$GAMBLE_TARGET/" 2>/dev/null || true
-      rm -rf /tmp/gamble-live 2>/dev/null || true
-      echo ">>> Successfully updated gamble-cascade in $GAMBLE_TARGET"
+    if GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --recursive https://github.com/lringwald/gamble-cascade.git /tmp/gamble-live; then
+      # Link heavy data directory from the persistent cluster mount into the local container working tree
+      if [ -d "$GAMBLE_TARGET/data" ]; then
+        for d_sub in "$GAMBLE_TARGET/data"/*; do
+          [ -e "$d_sub" ] || continue
+          b_sub="$(basename "$d_sub")"
+          rm -rf "/tmp/gamble-live/data/$b_sub" 2>/dev/null || true
+          ln -s "$d_sub" "/tmp/gamble-live/data/$b_sub"
+        done
+      fi
+      # Also best-effort sync lightweight R scripts back to the cluster mount (using -f to unlink before writing on FUSE)
+      cp -rf /tmp/gamble-live/pipelines /tmp/gamble-live/scripts /tmp/gamble-live/external "$GAMBLE_TARGET/" 2>/dev/null || true
+      export CASCADING_GAMBLE_DIR="/tmp/gamble-live"
+      echo ">>> Activated live gamble-cascade in /tmp/gamble-live (linked data from $GAMBLE_TARGET/data)"
+    else
+      echo ">>> WARNING: Live git clone failed; falling back to existing $GAMBLE_TARGET"
     fi
   elif [[ "$SNAPSHOT_MODE" == snapshot:* ]]; then
     SNAP_NAME="${SNAPSHOT_MODE#snapshot:}"
