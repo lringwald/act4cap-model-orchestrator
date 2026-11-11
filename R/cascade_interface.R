@@ -419,6 +419,8 @@ run_act4cap_cascade_downscaling <- function(model,
   Sys.setenv(INPUT_FILE = vintage_info$name)
   Sys.setenv(AGMIP_OUTPUT_DIR = out_dir)
   Sys.setenv(OUTPUT_DIR = out_dir)
+  Sys.setenv(AGMIP_TEMP_DIR = file.path(out_dir, "intermediate"))
+  Sys.setenv(TEMP_DIR = file.path(out_dir, "intermediate"))
   Sys.setenv(RESOLUTION = resolution)
   Sys.setenv(NCORES = as.character(ncores))
   # Point CASCADE_CORE_PATH to the installed package in the container to bypass FUSE compilation/io issues
