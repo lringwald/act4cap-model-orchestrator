@@ -102,22 +102,22 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
   GAMBLE_TARGET="$WORK_DIR/01_interimmodel/gamble-cascade"
   SNAPSHOT_MODE="${CASCADE_ENGINE_SOURCE:-live}"
   if [ "$SNAPSHOT_MODE" = "live" ] || [ "$SNAPSHOT_MODE" = "freeze" ]; then
-    echo ">>> Refreshing live gamble-cascade and engine submodules from GitHub into /tmp/gamble-live..."
-    rm -rf /tmp/gamble-live 2>/dev/null || true
-    if GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --recursive https://github.com/lringwald/gamble-cascade.git /tmp/gamble-live; then
+    echo ">>> Refreshing live gamble-cascade and engine submodules (cascade-core, gamble-core) from GitHub into /tmp/gamble-cascade-live..."
+    rm -rf /tmp/gamble-cascade-live 2>/dev/null || true
+    if GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --recursive https://github.com/lringwald/gamble-cascade.git /tmp/gamble-cascade-live; then
       # Link heavy data directory from the persistent cluster mount into the local container working tree
       if [ -d "$GAMBLE_TARGET/data" ]; then
         for d_sub in "$GAMBLE_TARGET/data"/*; do
           [ -e "$d_sub" ] || continue
           b_sub="$(basename "$d_sub")"
-          rm -rf "/tmp/gamble-live/data/$b_sub" 2>/dev/null || true
-          ln -s "$d_sub" "/tmp/gamble-live/data/$b_sub"
+          rm -rf "/tmp/gamble-cascade-live/data/$b_sub" 2>/dev/null || true
+          ln -s "$d_sub" "/tmp/gamble-cascade-live/data/$b_sub"
         done
       fi
       # Also best-effort sync lightweight R scripts back to the cluster mount (using -f to unlink before writing on FUSE)
-      cp -rf /tmp/gamble-live/pipelines /tmp/gamble-live/scripts /tmp/gamble-live/external "$GAMBLE_TARGET/" 2>/dev/null || true
-      export CASCADING_GAMBLE_DIR="/tmp/gamble-live"
-      echo ">>> Activated live gamble-cascade in /tmp/gamble-live (linked data from $GAMBLE_TARGET/data)"
+      cp -rf /tmp/gamble-cascade-live/pipelines /tmp/gamble-cascade-live/scripts /tmp/gamble-cascade-live/external "$GAMBLE_TARGET/" 2>/dev/null || true
+      export CASCADING_GAMBLE_DIR="/tmp/gamble-cascade-live"
+      echo ">>> Activated live gamble-cascade in /tmp/gamble-cascade-live (linked data from $GAMBLE_TARGET/data)"
     else
       echo ">>> WARNING: Live git clone failed; falling back to existing $GAMBLE_TARGET"
     fi
