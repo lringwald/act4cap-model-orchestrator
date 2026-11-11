@@ -407,7 +407,7 @@ if (exists("mapping_grid")) {
 
   # Load heavier packages now that the grid footprint is minimized
   message(">>> Loading runtime environments...")
-  require(gamstransfer)
+  if (requireNamespace("gamstransfer", quietly = TRUE)) suppressPackageStartupMessages(library(gamstransfer))
   require(cli)
 
   # Source core logic and utilities
@@ -1859,11 +1859,10 @@ if (RUN_CHECKS) {
 
       # Ensure interactive reporting dependencies are installed
       report_pkgs <- c("plotly", "DT", "bslib", "htmltools")
-      missing_pkgs <- report_pkgs[!(report_pkgs %in% installed.packages()[,"Package"])]
+      missing_pkgs <- report_pkgs[!vapply(report_pkgs, requireNamespace, logical(1), quietly = TRUE)]
       if (length(missing_pkgs) > 0) {
-        cli_alert_info(paste("Installing missing packages for interactive HTML report:", paste(missing_pkgs, collapse = ", ")))
-        install.packages(missing_pkgs, repos = "https://cloud.r-project.org", quiet = TRUE)
-      }
+        cli_alert_warning(paste("Skipping interactive HTML report; missing packages:", paste(missing_pkgs, collapse = ", ")))
+      } else {
 
       tryCatch({
         # Save metadata registry
@@ -1888,13 +1887,14 @@ if (RUN_CHECKS) {
                                           prior_impact_file = if (!is.null(files$prior_impact_output) && file.exists(files$prior_impact_output)) files$prior_impact_output else NULL,
                                           model_name = model_name,
                                           target_scenario = scen),
-                            intermediates_dir = paths$output_dir,
-                            quiet = TRUE)
-          cli_alert_success("HTML report generated for {scen}: {html_report_path}")
-        }
-      }, error = function(e) {
-        cli_alert_warning("Could not render HTML report: {e$message}")
-      })
+                              intermediates_dir = paths$temp,
+                              quiet = TRUE)
+            cli_alert_success("HTML report generated for {scen}: {html_report_path}")
+          }
+        }, error = function(e) {
+          cli_alert_warning("Could not render HTML report: {e$message}")
+        })
+      }
     } else {
       cli_alert_warning("Skipped HTML report generation because the 'rmarkdown' package is not installed.")
     }

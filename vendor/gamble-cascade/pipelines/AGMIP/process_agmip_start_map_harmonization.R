@@ -175,7 +175,7 @@ for (i in seq_len(nrow(scen_grid))) {
   temp_join[, lu := lu_class]
   
   # Estimate empirical prior
-  if (!requireNamespace("nnls", quietly = TRUE)) install.packages("nnls", repos = "https://cloud.r-project.org/")
+  if (!requireNamespace("nnls", quietly = TRUE)) stop("Required package 'nnls' is not installed.")
   
   start_wide <- dcast(temp_join, Ns_reg ~ lu, value.var = "LUM_area_km2", fill = 0)
   target_wide <- dcast(temp_join, Ns_reg ~ lu, value.var = "AgMIP_area_km2", fill = 0)

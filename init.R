@@ -17,7 +17,13 @@ if (!.configured) {
           else c(CRAN = 'https://cloud.r-project.org/'))
 }
 
-PKGS <- c('data.table', 'terra', 'sf', 'arrow', 'qs2', 'jsonlite', 'cli', 'yaml', 'optparse', 'devtools', 'Rcpp', 'nloptr', 'progress', 'withr')
+PKGS <- c(
+  'data.table', 'terra', 'sf', 'arrow', 'qs2', 'jsonlite', 'cli', 'yaml',
+  'optparse', 'devtools', 'Rcpp', 'RcppArmadillo', 'nloptr', 'nnls',
+  'progress', 'withr', 'digest', 'dplyr', 'tidyverse', 'tidyselect', 'rlang',
+  'knitr', 'rmarkdown', 'kableExtra', 'plotly', 'DT', 'bslib', 'htmltools',
+  'ggplot2', 'scales', 'future', 'future.apply', 'matrixStats', 'FNN', 'foreign'
+)
 miss <- PKGS[!vapply(PKGS, requireNamespace, logical(1), quietly = TRUE)]
 if (length(miss)) {
   message('>>> installing: ', paste(miss, collapse = ', '))

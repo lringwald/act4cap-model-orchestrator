@@ -114,7 +114,7 @@ temp_data[, macro_outflow := pmax(total_t_lag - total_t, 0)]
 # ---------------------------------------------------------------
 message(">>> [AgMIP] Estimating empirical transition prior matrix (Global NNLS)...")
 if (!requireNamespace("nnls", quietly = TRUE)) {
-  install.packages("nnls", repos = "https://cloud.r-project.org/")
+  stop("Required package 'nnls' is not installed.")
 }
 
 start_wide  <- dcast(temp_data, model + scenario + Ns_reg + year ~ lu_class, value.var = "area_t_lag", fill = 0)
