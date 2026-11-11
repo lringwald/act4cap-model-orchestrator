@@ -102,12 +102,14 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
   GAMBLE_TARGET="$WORK_DIR/01_interimmodel/gamble-cascade"
   SNAPSHOT_MODE="${CASCADE_ENGINE_SOURCE:-live}"
   if [ "$SNAPSHOT_MODE" = "live" ] || [ "$SNAPSHOT_MODE" = "freeze" ]; then
-    if [ ! -f "$GAMBLE_TARGET/pipelines/AGMIP/run_downscaling.R" ]; then
-      echo ">>> Initializing gamble-cascade repository in $GAMBLE_TARGET..."
-      git clone --recursive https://github.com/lringwald/gamble-cascade.git "$GAMBLE_TARGET" 2>/dev/null || true
-    elif [ -d "$GAMBLE_TARGET/.git" ]; then
-      echo ">>> Sourcing fresh updates for gamble-cascade from GitHub..."
-      (cd "$GAMBLE_TARGET" && git fetch origin && git merge origin/main --ff-only 2>/dev/null && git submodule update --init --recursive 2>/dev/null) || true
+    echo ">>> Refreshing live gamble-cascade and engine submodules from GitHub into /tmp/gamble-live..."
+    rm -rf /tmp/gamble-live 2>/dev/null || true
+    if git clone --depth 1 --recursive https://github.com/lringwald/gamble-cascade.git /tmp/gamble-live 2>/dev/null; then
+      mkdir -p "$GAMBLE_TARGET"
+      # Overlay git-tracked codebase while preserving any data directories on the persistent cluster mount
+      cp -rf /tmp/gamble-live/* "$GAMBLE_TARGET/" 2>/dev/null || true
+      rm -rf /tmp/gamble-live 2>/dev/null || true
+      echo ">>> Successfully updated gamble-cascade in $GAMBLE_TARGET"
     fi
   elif [[ "$SNAPSHOT_MODE" == snapshot:* ]]; then
     SNAP_NAME="${SNAPSHOT_MODE#snapshot:}"
