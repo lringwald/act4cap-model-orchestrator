@@ -17,5 +17,6 @@ data/raw/
 vendor/*
 !vendor/Biodiversity_Link/
 !vendor/cascade-core/
+!vendor/gamble-cascade/
 scratch/
 

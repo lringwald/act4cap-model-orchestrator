@@ -1,0 +1,479 @@
+---
+title: "LAMASUS Downscaling Diagnostic Report"
+subtitle: "Professional Spatial Validation"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+params:
+  lu_raster: "outputs/downscaled_results_lu.tif"
+  lsu_raster: "outputs/downscaled_results_lsu.tif"
+  diag_csv: "outputs/downscaled_results_diagnostics.csv"
+  scenario: "All"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 12, fig.height = 10)
+library(terra)
+library(dplyr)
+library(ggplot2)
+library(data.table)
+
+# Use parameters passed from render()
+lu_raster_path <- params$lu_raster
+lsu_raster_path <- params$lsu_raster
+diag_csv_path <- params$diag_csv
+
+# 1. Load Boundaries
+cntr_path <- "H:/R/DATA/geodata/ref-countries-2020-60m/CNTR_RG_60M_2020_4326.shp"
+nuts_path <- "H:/R/DATA/geodata/NUTS_RG_2016/NUTS_RG_60M_2016_3035.shp"
+
+countries <- if (file.exists(cntr_path)) vect(cntr_path) else NULL
+nuts2 <- if (file.exists(nuts_path)) {
+  v <- vect(nuts_path)
+  # Filter for NUTS2 levels (usually LEVL_CODE == 2)
+  if ("LEVL_CODE" %in% names(v)) v <- v[v$LEVL_CODE == 2]
+  v
+} else NULL
+
+# Color Palette Mappings
+# Land Cover (Terrain/Greens/Browns)
+lu_pals <- list(
+  # Catch-all terrain colors for unknown classes
+  default = terrain.colors(100)
+)
+
+# Custom color mapping for common classes (Starts at #ffffff for zero area)
+get_lu_colors <- function(class_name) {
+  name_low <- tolower(class_name)
+  
+  # Forests: Deep Greens (Refined)
+  if (grepl("forest", name_low) || grepl(".fo.", name_low)) {
+    return(colorRampPalette(c("#ffffff", "#e5f5e0", "#a1d99b", "#31a354", "#00441b"))(100))
+  }
+  # Grassland/Pasture: Vibrant Lime/Meadow
+  if (grepl("grass", name_low) || grepl(".gr.", name_low) || grepl("pasture", name_low)) {
+    return(colorRampPalette(c("#ffffff", "#f7fcb9", "#c2e699", "#78c679", "#238443", "#00441b"))(100))
+  }
+  # Cropland: Golden Amber/Harvest
+  if (grepl("crop", name_low) || grepl(".ara.", name_low) || grepl("shortrota", name_low)) {
+    return(colorRampPalette(c("#ffffff", "#fff7bc", "#fee391", "#fec44f", "#ec7014", "#8c2d04"))(100))
+  }
+  # Urban/Built-up: Warm Reds/Terracotta
+  if (grepl("urban", name_low) || grepl(".urb.", name_low) || grepl("built", name_low)) {
+    return(colorRampPalette(c("#ffffff", "#fee0d2", "#fc9272", "#de2d26", "#a50f15", "#67000d"))(100))
+  }
+  # Water/Wetlands: Deep Azure/Coastal
+  if (grepl("water", name_low) || grepl(".wat.", name_low) || grepl("wetland", name_low)) {
+    return(colorRampPalette(c("#ffffff", "#deebf7", "#9ecae1", "#3182bd", "#08519c", "#08306b"))(100))
+  }
+  # Default: Neutral Terrain/Slate
+  return(colorRampPalette(c("#ffffff", "#f0f0f0", "#bdbdbd", "#636363", "#252525"))(100))
+}
+
+# Administrative plotting helper
+plot_with_borders <- function(r, main_title, col_pal, countries_p = NULL, nuts_p = NULL, zlim = NULL, symmetric = FALSE, log_scale = FALSE) {
+  # 0. Check if raster is completely NA
+  obs_range_raw <- as.numeric(global(r, fun=c("min", "max"), na.rm=TRUE))
+  if (all(is.na(obs_range_raw))) {
+    if (!is.null(countries_p)) {
+      plot(countries_p, main = main_title, border = "grey30", lwd = 1.0, col = "grey85", mar = c(3, 3, 3, 5))
+      if (!is.null(nuts_p)) plot(nuts_p, add = TRUE, border = "grey70", lwd = 0.4)
+    } else {
+      plot.new()
+      title(main = main_title)
+    }
+    return()
+  }
+
+  # 1. Determine dynamic range if not provided (Removes 'hard' threshold)
+  if (is.null(zlim)) {
+    obs_range <- obs_range_raw
+    
+    if (symmetric) {
+      max_abs <- max(abs(obs_range), na.rm=TRUE)
+      if (max_abs == 0) max_abs <- 1
+      zlim <- c(-max_abs, max_abs)
+    } else {
+      zlim <- obs_range
+      if (zlim[1] == zlim[2]) {
+        zlim <- zlim[1] + c(-0.1, 0.1)
+      }
+    }
+  }
+
+  # 2. Handle Transformation (Log-like for better contrast in small areas)
+  # Using delta=0.01 (e.g. 1 ha) as the sensitivity threshold
+  delta <- 0.01 
+  trans_func <- function(x) sign(x) * log10(1 + abs(x) / delta)
+  
+  if (log_scale) {
+    # Transform the raster for plotting
+    r_plot <- app(r, trans_func)
+    zlim_plot <- trans_func(zlim)
+    
+    # Generate pretty labels in original units for the legend
+    ticks_orig <- pretty(zlim, n = 7)
+    if (symmetric && !(0 %in% ticks_orig)) ticks_orig <- sort(unique(c(ticks_orig, 0)))
+    ticks_plot <- trans_func(ticks_orig)
+    
+    legend_args <- list(at = ticks_plot, labels = ticks_orig)
+  } else {
+    r_plot <- r
+    zlim_plot <- zlim
+    legend_args <- NULL # Default legend behavior
+  }
+
+  # User Request Fix: 0 is white (#ffffff), but NAs (outside target) are grey (grey85)
+  # Force type="continuous" and clear levels to prevent categorical legend errors
+  levels(r_plot) <- NULL
+  plot(r_plot, type = "continuous", main = main_title, col = col_pal, colNA = "grey85", range = zlim_plot, mar = c(3, 3, 3, 5),
+       plg = legend_args, maxcell = 500000)
+  
+  if (!is.null(nuts_p)) {
+    plot(nuts_p, add = TRUE, border = "grey70", lwd = 0.4)
+  }
+  if (!is.null(countries_p)) {
+    plot(countries_p, add = TRUE, border = "grey30", lwd = 1.0)
+  }
+}
+```
+
+## Land Use Results (LUC)
+
+```{r luc_plots, results='asis'}
+if (file.exists(lu_raster_path)) {
+  r_lu <- rast(lu_raster_path)
+  r_crs <- crs(r_lu)
+  
+  # Pre-project boundaries once
+  cntr_p <- if(!is.null(countries)) project(countries, r_crs) else NULL
+  nuts_p <- if(!is.null(nuts2)) project(nuts2, r_crs) else NULL
+  
+  lyr_names <- names(r_lu)
+  
+  # Group layers by Year (assuming format "Year_Class")
+  years <- unique(sub("_.*", "", lyr_names))
+  
+  for (yr in years) {
+    cat(paste0("### Year: ", yr, " {.tabset}\n\n"))
+    
+    yr_lyrs <- lyr_names[startsWith(lyr_names, paste0(yr, "_"))]
+    
+    # --- ADD TOTAL AREA MAP FOR THIS YEAR ---
+    cat(paste0("#### [CONTEXT] Total Land Use Area\n\n"))
+    r_total <- sum(r_lu[[yr_lyrs]])
+    
+    # Calculate expected area for full pixel at this resolution
+    px_area_expected <- prod(res(r_total)) / 1e6
+    observed_range <- global(r_total, fun=c("min", "max"), na.rm=TRUE)
+    
+    cat(paste0("**Total Area Value for Year ", yr, ":** ", round(global(r_total, "sum", na.rm=TRUE)[1,1], 2), " (map units)\n\n"))
+    cat(paste0("**Pixel Area Range:** ", round(observed_range[1,1], 3), " to ", round(observed_range[1,2], 3), " km2 (Expected: ", round(px_area_expected, 3), ")\n\n"))
+    
+    # Plot sum of all land uses for this year
+    # We use a distinct palette to show 'Full' (dark) vs 'Partial' (light) coverage
+    plot_with_borders(r_total, 
+                      main_title = paste0(yr, " - Total Land Use Area"), 
+                      col_pal = colorRampPalette(c("#ffffff", "#d9f0a3", "#78c679", "#238443", "#004529"))(100),
+                      countries_p = cntr_p,
+                      nuts_p = nuts_p,
+                      log_scale = TRUE)
+    cat("\n\n")
+    
+    for (lyr in yr_lyrs) {
+      class_label <- sub("^[0-9]+_", "", lyr)
+      
+      # Calculate total area
+      total_val <- global(r_lu[[lyr]], "sum", na.rm=TRUE)[1,1]
+      
+      cat(paste0("#### ", class_label, "\n\n"))
+      cat(paste0("**Total Area Value:** ", round(total_val, 2), " (map units)\n\n"))
+      
+      # Land use area scale (standardized to max pixel area)
+      px_area <- prod(res(r_lu)) / 1e6
+
+      plot_with_borders(r_lu[[lyr]], 
+                        main_title = paste0(yr, " - ", class_label), 
+                        col_pal = get_lu_colors(class_label),
+                        countries_p = cntr_p,
+                        nuts_p = nuts_p,
+                        log_scale = TRUE)
+      cat("\n\n")
+    }
+  }
+} else {
+  cat("LU Raster results not found at: ", lu_raster_path, "\n")
+}
+```
+
+## Spatial Change Analysis (LUC)
+
+This section highlights the geographic shifts across key temporal milestones.
+
+```{r luc_change_plots, results='asis'}
+if (file.exists(lu_raster_path)) {
+  r_lu <- rast(lu_raster_path)
+  r_crs <- crs(r_lu)
+  
+  # Pre-project boundaries
+  cntr_p <- if(!is.null(countries)) project(countries, r_crs) else NULL
+  nuts_p <- if(!is.null(nuts2)) project(nuts2, r_crs) else NULL
+  
+  lyr_names <- names(r_lu)
+  classes <- unique(sub("^[0-9]+_", "", lyr_names))
+  years_available <- as.numeric(unique(sub("_.*", "", lyr_names)))
+  
+  # Identify target years for comparison
+  start_yr <- 2000
+  mid_yr   <- 2020
+  end_yr   <- max(years_available)
+  
+  # Helper for diverging change palette
+  # Blue = Expansion, Red = Retreat, White = Stable (Zero)
+  # odd number of colors (101) ensures the exact middle is #ffffff
+  change_pal <- colorRampPalette(c("#b2182b", "#ef8a62", "#fddbc7", "#ffffff", "#d1e5f0", "#67a9cf", "#2166ac"))(101)
+
+  if (start_yr %in% years_available && mid_yr %in% years_available) {
+    cat(paste0("### Historical Change: ", mid_yr, " vs ", start_yr, " {.tabset}\n\n"))
+    for (cls in classes) {
+      lyr_start <- paste0(start_yr, "_", cls)
+      lyr_mid   <- paste0(mid_yr, "_", cls)
+      
+      if (lyr_start %in% lyr_names && lyr_mid %in% lyr_names) {
+        cat(paste0("#### ", cls, "\n\n"))
+        r_diff <- r_lu[[lyr_mid]] - r_lu[[lyr_start]]
+        
+        # Calculate summary statistics
+        net_change <- global(r_diff, "sum", na.rm=TRUE)[1,1]
+        cat(paste0("**Net Area Change (", cls, "):** ", round(net_change, 3), " map units\n\n"))
+        
+        plot_with_borders(r_diff, 
+                          main_title = paste0(cls, ": Change ", start_yr, " to ", mid_yr),
+                          col_pal = change_pal,
+                          countries_p = cntr_p,
+                          nuts_p = nuts_p,
+                          symmetric = TRUE,
+                          log_scale = TRUE)
+        cat("\n\n")
+      }
+    }
+  }
+
+  if (mid_yr %in% years_available && end_yr > mid_yr) {
+    cat(paste0("### Projected Change: ", end_yr, " vs ", mid_yr, " {.tabset}\n\n"))
+    for (cls in classes) {
+      lyr_mid   <- paste0(mid_yr, "_", cls)
+      lyr_end   <- paste0(end_yr, "_", cls)
+      
+      if (lyr_mid %in% lyr_names && lyr_end %in% lyr_names) {
+        cat(paste0("#### ", cls, "\n\n"))
+        r_diff <- r_lu[[lyr_end]] - r_lu[[lyr_mid]]
+        
+        net_change <- global(r_diff, "sum", na.rm=TRUE)[1,1]
+        cat(paste0("**Net Projected Change (", cls, "):** ", round(net_change, 3), " map units\n\n"))
+        
+        plot_with_borders(r_diff, 
+                          main_title = paste0(cls, ": Change ", mid_yr, " to ", end_yr),
+                          col_pal = change_pal,
+                          countries_p = cntr_p,
+                          nuts_p = nuts_p,
+                          symmetric = TRUE,
+                          log_scale = TRUE)
+        cat("\n\n")
+      }
+    }
+  }
+}
+```
+
+## Livestock Results (LSU)
+
+```{r lsu_plots, results='asis'}
+if (file.exists(lsu_raster_path)) {
+  r_lsu <- rast(lsu_raster_path)
+  r_crs <- crs(r_lsu)
+  
+  # Pre-project boundaries once
+  cntr_p <- if(!is.null(countries)) project(countries, r_crs) else NULL
+  nuts_p <- if(!is.null(nuts2)) project(nuts2, r_crs) else NULL
+  
+  lyr_names <- names(r_lsu)
+  
+  # Group layers by Year if applicable
+  has_year_prefix <- all(grepl("^[0-9]{4}_", lyr_names))
+  years <- if(has_year_prefix) unique(sub("_.*", "", lyr_names)) else "All Years"
+  
+  for (yr in years) {
+    cat(paste0("### Year: ", yr, " {.tabset}\n\n"))
+    
+    yr_lyrs <- if(has_year_prefix) lyr_names[startsWith(lyr_names, paste0(yr, "_"))] else lyr_names
+    
+    for (lyr in yr_lyrs) {
+      class_label <- if(has_year_prefix) sub("^[0-9]+_", "", lyr) else lyr
+      total_val <- global(r_lsu[[lyr]], "sum", na.rm=TRUE)[1,1]
+      
+      cat(paste0("#### ", class_label, "\n\n"))
+      cat(paste0("**Total Livestock Value:** ", round(total_val, 2), " (LSU)\n\n"))
+      
+      # Use Magma-inspired palette but starting with white for zero area
+      lsu_pal <- colorRampPalette(c("#ffffff", "#fcfdbf", "#feb078", "#b63679", "#51127c", "#000004"))(100)
+      # LSU scales to its own observed maximum for better contrast
+      max_val <- as.numeric(global(r_lsu[[lyr]], "max", na.rm=TRUE)[1,1])
+      if (is.na(max_val) || max_val == 0) max_val <- 1
+      
+      plot_with_borders(r_lsu[[lyr]], 
+                        main_title = paste0(yr, " - ", class_label), 
+                        col_pal = lsu_pal,
+                        countries_p = cntr_p,
+                        nuts_p = nuts_p,
+                        log_scale = TRUE)
+      cat("\n\n")
+    }
+  }
+} else {
+  cat("LSU Raster results not found: ", lsu_raster_path, "\n")
+}
+```
+
+## Spatial Change Analysis (LSU)
+
+This section visualizes the shifting density of livestock across historical and projected periods.
+
+```{r lsu_change_plots, results='asis'}
+if (file.exists(lsu_raster_path)) {
+  r_lsu <- rast(lsu_raster_path)
+  r_crs <- crs(r_lsu)
+  
+  # Pre-project boundaries
+  cntr_p <- if(!is.null(countries)) project(countries, r_crs) else NULL
+  nuts_p <- if(!is.null(nuts2)) project(nuts2, r_crs) else NULL
+  
+  lyr_names <- names(r_lsu)
+  
+  if (all(grepl("^[0-9]{4}_", lyr_names))) {
+    classes <- unique(sub("^[0-9]+_", "", lyr_names))
+    years_available <- as.numeric(unique(sub("_.*", "", lyr_names)))
+    
+    start_yr <- 2000
+    mid_yr   <- 2020
+    end_yr   <- max(years_available)
+    
+    change_pal <- colorRampPalette(c("#b2182b", "#ef8a62", "#fddbc7", "#ffffff", "#d1e5f0", "#67a9cf", "#2166ac"))(101)
+
+    if (start_yr %in% years_available && mid_yr %in% years_available) {
+      cat(paste0("### Historical Change: ", mid_yr, " vs ", start_yr, " {.tabset}\n\n"))
+      for (cls in classes) {
+        lyr_start <- paste0(start_yr, "_", cls)
+        lyr_mid   <- paste0(mid_yr, "_", cls)
+        
+        if (lyr_start %in% lyr_names && lyr_mid %in% lyr_names) {
+          cat(paste0("#### ", cls, "\n\n"))
+          r_diff <- r_lsu[[lyr_mid]] - r_lsu[[lyr_start]]
+          net_change <- global(r_diff, "sum", na.rm=TRUE)[1,1]
+          cat(paste0("**Net LSU Change (", cls, "):** ", round(net_change, 3), " LSU\n\n"))
+          
+          plot_with_borders(r_diff, 
+                            main_title = paste0(cls, ": Change ", start_yr, " to ", mid_yr),
+                            col_pal = change_pal,
+                            countries_p = cntr_p,
+                            nuts_p = nuts_p,
+                            symmetric = TRUE,
+                            log_scale = TRUE)
+          cat("\n\n")
+        }
+      }
+    }
+
+    if (mid_yr %in% years_available && end_yr > mid_yr) {
+      cat(paste0("### Projected Change: ", end_yr, " vs ", mid_yr, " {.tabset}\n\n"))
+      for (cls in classes) {
+        lyr_mid   <- paste0(mid_yr, "_", cls)
+        lyr_end   <- paste0(end_yr, "_", cls)
+        
+        if (lyr_mid %in% lyr_names && lyr_end %in% lyr_names) {
+          cat(paste0("#### ", cls, "\n\n"))
+          r_diff <- r_lsu[[lyr_end]] - r_lsu[[lyr_mid]]
+          net_change <- global(r_diff, "sum", na.rm=TRUE)[1,1]
+          cat(paste0("**Net Projected LSU Change (", cls, "):** ", round(net_change, 3), " LSU\n\n"))
+          
+          plot_with_borders(r_diff, 
+                            main_title = paste0(cls, ": Change ", mid_yr, " to ", end_yr),
+                            col_pal = change_pal,
+                            countries_p = cntr_p,
+                            nuts_p = nuts_p,
+                            symmetric = TRUE,
+                            log_scale = TRUE)
+          cat("\n\n")
+        }
+      }
+    }
+  }
+}
+```
+
+## Solver Diagnostics
+
+```{r diagnostics_summary, results='asis'}
+if (file.exists(diag_csv_path)) {
+  diag_dt <- fread(diag_csv_path)
+  if (params$scenario != "All") {
+    diag_dt <- diag_dt[scenario == params$scenario]
+  }
+  
+  cat("### Failure Summary by Metric\n\n")
+  
+  # Calculate summary stats
+  diag_summary <- diag_dt[, .(
+    Transitions = .N,
+    Budget_Deficits = sum(as.logical(initial_area_insufficient), na.rm = TRUE),
+    Restriction_Blocked = sum(as.logical(restriction_blocking), na.rm = TRUE),
+    Competition_Conflicts = sum(as.logical(restriction_competition), na.rm = TRUE),
+    Total_Duration_m = round(sum(duration_s, na.rm = TRUE)/60, 2)
+  ), by = .(times)]
+  
+  print(knitr::kable(diag_summary, caption = "Summary of Allocation Failures across Years"))
+  cat("\n\n")
+  
+  cat("### Detailed Failure Breakdown\n\n")
+  
+  # Categorize failures for plotting
+  diag_dt[, failure_type := "Success"]
+  diag_dt[as.logical(initial_area_insufficient) == TRUE, failure_type := "Budget Deficit"]
+  diag_dt[as.logical(restriction_blocking) == TRUE & failure_type == "Success", failure_type := "Individual Restriction"]
+  diag_dt[as.logical(restriction_competition) == TRUE & failure_type == "Success", failure_type := "Competitive Restriction"]
+  
+  # 1. Failure Type bar plot
+  if (nrow(diag_dt[failure_type != "Success"]) > 0) {
+    p1 <- ggplot(diag_dt[failure_type != "Success"], aes(x = factor(times), fill = failure_type)) +
+      geom_bar(position = "dodge") +
+      theme_minimal() +
+      labs(title = "Allocation Failures by Type and Year", x = "Year", y = "Count of Transition Failures", fill = "Conflict Type") +
+      scale_fill_brewer(palette = "Set1")
+    
+    print(p1)
+    cat("\n\n")
+  } else {
+    cat("*No allocation failures detected in this run.*\n\n")
+  }
+  
+  # 2. Performance Tracking (if available)
+  if ("duration_s" %in% names(diag_dt) && any(!is.na(diag_dt$duration_s))) {
+    cat("### Performance Analysis\n\n")
+    p2 <- ggplot(diag_dt, aes(x = factor(times), y = duration_s, fill = factor(times))) +
+      geom_boxplot() +
+      scale_y_log10() +
+      theme_minimal() +
+      labs(title = "Optimization Duration per Transition (Log Scale)", x = "Year", y = "Duration (seconds)") +
+      theme(legend.position = "none")
+    
+    print(p2)
+    cat("\n\n")
+  }
+
+} else {
+  cat("Diagnostic CSV not found at: ", diag_csv_path, "\n")
+}
+```

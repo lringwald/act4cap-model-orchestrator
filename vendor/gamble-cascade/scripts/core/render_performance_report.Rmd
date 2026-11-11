@@ -1,0 +1,864 @@
+---
+title: "`r paste(params$model_name, if(params$target_scenario != 'ALL') paste('Scenario:', params$target_scenario) else '', 'Downscaling Performance Dashboard')`"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    theme:
+      bslib: true
+      bootswatch: flatly
+    toc: true
+    toc_float: true
+params:
+  diag_file: NULL
+  harmonization_file: NULL
+  area_conservation_file: NULL
+  report_file: NULL
+  metadata_file: NULL
+  prior_impact_file: NULL
+  model_name: "LAMASUS"
+  target_scenario: "ALL"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+options(scipen = 999)
+library(data.table)
+library(DT)
+library(ggplot2)
+library(plotly)
+library(bslib)
+library(htmltools)
+
+# --- Load data with graceful degradation ---
+load_if_exists <- function(path) {
+  if (!is.null(path) && file.exists(path)) fread(path) else NULL
+}
+
+df <- load_if_exists(params$diag_file)
+harm_df <- load_if_exists(params$harmonization_file)
+conserv_df <- load_if_exists(params$area_conservation_file)
+report_df <- load_if_exists(params$report_file)
+
+if (params$target_scenario != "ALL") {
+  filter_scen <- function(dt) {
+    if (is.null(dt)) return(NULL)
+    scen_col <- if ("scenario" %in% names(dt)) "scenario" else if (".SCEN_ID." %in% names(dt)) ".SCEN_ID." else NULL
+    if (!is.null(scen_col)) {
+      return(dt[get(scen_col) == params$target_scenario])
+    }
+    return(dt)
+  }
+  df <- filter_scen(df)
+  harm_df <- filter_scen(harm_df)
+  conserv_df <- filter_scen(conserv_df)
+  report_df <- filter_scen(report_df)
+}
+
+if (!is.null(report_df) && all(c("from_class", "to_class") %in% names(report_df))) {
+  report_df <- report_df[from_class != to_class]
+}
+
+if (is.null(df)) stop("Performance summary file not found: ", params$diag_file)
+
+# Ensure basic columns exist
+if (!"Total_Target_Area" %in% names(df)) df[, Total_Target_Area := 0]
+if (!"Total_Missed_Area" %in% names(df)) df[, Total_Missed_Area := 0]
+if (!"Percent_Missed" %in% names(df)) df[, Percent_Missed := 0]
+
+# Derive country from region if not already present (NUTS → 2-char ISO)
+if (!"country" %in% names(df) && "region" %in% names(df)) {
+  df[, country := substr(region, 1, 2)]
+}
+# Use region as-is if it's already country-level
+region_key <- if ("country" %in% names(df)) "country" else "region"
+
+# Calculate region-level stats
+agg_keys <- if ("scenario" %in% names(df)) c(region_key, "scenario") else region_key
+region_stats <- df[, .(
+  Total_Target = sum(Total_Target_Area, na.rm = TRUE),
+  Total_Missed = sum(Total_Missed_Area, na.rm = TRUE),
+  ACR_Loss = if ("ACR_Integration_Loss" %in% names(.SD)) sum(ACR_Integration_Loss, na.rm = TRUE) else 0,
+  Start_Loss = if ("Start_Area_Insufficient_Loss" %in% names(.SD)) sum(Start_Area_Insufficient_Loss, na.rm = TRUE) else 0,
+  Restrict_Loss = if ("Restriction_Blocking_Loss" %in% names(.SD)) sum(Restriction_Blocking_Loss, na.rm = TRUE) else 0,
+  Solver_Loss = if ("Competition_Solver_Loss" %in% names(.SD)) sum(Competition_Solver_Loss, na.rm = TRUE) else 0
+), by = agg_keys]
+region_stats[, Percent_Missed := round((Total_Missed / pmax(Total_Target, 1e-12)) * 100, 2)]
+
+# Rename failure modes to human-readable format
+rename_map <- c(
+  "ACR_Loss" = "Pre-Downscaling Target Loss",
+  "Start_Loss" = "Insufficient Start Area",
+  "Restrict_Loss" = "Blocked by Spatial Restrictions",
+  "Solver_Loss" = "Solver Trade-offs"
+)
+setnames(region_stats, old = names(rename_map), new = rename_map, skip_absent = TRUE)
+fail_cols <- intersect(rename_map, names(region_stats))
+```
+
+# {.tabset}
+
+## Executive Summary
+
+```{r value_boxes}
+tot_tgt <- sum(region_stats$Total_Target, na.rm = TRUE)
+tot_miss <- sum(region_stats$Total_Missed, na.rm = TRUE)
+pct_miss <- round((tot_miss / max(tot_tgt, 1)) * 100, 2)
+n_regions <- nrow(region_stats)
+
+boxes <- layout_columns(
+  value_box(
+    title = "Total Target Area (km²)",
+    value = formatC(tot_tgt, format = "f", big.mark = ",", digits = 0),
+    theme = "primary"
+  ),
+  value_box(
+    title = "Total Missed Area (km²)",
+    value = formatC(tot_miss, format = "f", big.mark = ",", digits = 0),
+    theme = if (pct_miss > 5) "danger" else "warning"
+  ),
+  value_box(
+    title = "Global Missing Rate",
+    value = paste0(pct_miss, "%"),
+    theme = if (pct_miss > 5) "danger" else "success"
+  ),
+  value_box(
+    title = "Regions Processed",
+    value = n_regions,
+    theme = "info"
+  )
+)
+boxes
+```
+
+<br>
+
+### Severe Failures (>5% Target Missed)
+
+```{r severe_failures}
+severe <- region_stats[Percent_Missed > 5.0][order(-Percent_Missed)]
+if (nrow(severe) > 0) {
+  datatable(severe, rownames = FALSE, options = list(pageLength = 10, dom = 'tp')) %>%
+    formatStyle('Percent_Missed', color = 'white', backgroundColor = '#e74c3c')
+} else {
+  cat("✅ No regions with >5% target missed. Excellent performance!")
+}
+```
+
+---
+
+## Global Diagnostic Metrics
+
+### Scenario Comparison
+```{r scenario_plot}
+if ("scenario" %in% names(df) && length(unique(df$scenario)) > 1) {
+  # Calculate missing rate per scenario
+  scen_stats <- df[, .(Total_Target = sum(Total_Target_Area, na.rm = TRUE), Total_Missed = sum(Total_Missed_Area, na.rm = TRUE)), by = scenario]
+  scen_stats[, Percent_Missed := round((Total_Missed / pmax(Total_Target, 1e-12)) * 100, 2)]
+  
+  fig_scen <- plot_ly(scen_stats, x = ~scenario, y = ~Percent_Missed, type = 'bar', 
+                      marker = list(color = '#3498db')) %>%
+    layout(
+      title = "Overall Missing Rate by Scenario",
+      xaxis = list(title = "Simulation Scenario"),
+      yaxis = list(title = "Percentage of Target Area Unallocated (%)")
+    )
+  
+  fig_scen
+} else {
+  cat("ℹ️ Only one scenario found in data; scenario comparison is not applicable.")
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> If multiple scenarios were run, this bar chart compares the overall missing rate across them. It helps identify if certain policy shocks or economic pathways are inherently harder to downscale than the baseline.
+</div>
+
+### Global Failure Mode Distribution
+```{r donut_chart}
+if (length(fail_cols) > 0) {
+  global_fails <- region_stats[, lapply(.SD, sum, na.rm = TRUE), .SDcols = fail_cols]
+  if (sum(global_fails) > 0) {
+    fail_melt_global <- melt(global_fails, measure.vars = fail_cols, variable.name = "Failure_Mode", value.name = "Area")
+    
+    fig_donut <- plot_ly(fail_melt_global, labels = ~Failure_Mode, values = ~Area, type = 'pie', textinfo = 'label+percent', hole = 0.4,
+                         marker = list(colors = c("#FF9999", "#66B2FF", "#99FF99", "#FFCC99"))) %>%
+      layout(title = "Global Distribution of Downscaling Failure Modes",
+             showlegend = TRUE)
+    fig_donut
+  }
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This donut chart aggregates the failure modes globally, showing the proportion of total missed area attributed to each algorithmic bottleneck (e.g., initial map deficits vs. competition constraints).
+</div>
+
+### Target vs Downscaled Over Time
+```{r time_series}
+if (!is.null(report_df) && "times" %in% names(report_df) && nrow(report_df) > 0) {
+  time_agg <- report_df[, .(
+    target = sum(value, na.rm = TRUE),
+    downscaled = sum(ds_val, na.rm = TRUE)
+  ), by = .(times)]
+  
+  fig_time <- plot_ly(time_agg, x = ~times) %>%
+    add_lines(y = ~target, name = "Requested Target", line = list(color = "#2c3e50", width = 3)) %>%
+    add_lines(y = ~downscaled, name = "Actually Downscaled", line = list(color = "#e74c3c", width = 3, dash = 'dash')) %>%
+    layout(
+      title = "Total Area Evolution Over Time",
+      xaxis = list(title = "Simulation Time Horizon"),
+      yaxis = list(title = "Total Land Area (km²)")
+    )
+  fig_time
+} else {
+  cat("ℹ️ Time series data not available.")
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This line chart tracks the evolution of total target area versus downscaled area over the simulated time horizon. A diverging gap over time indicates compounding errors or increasingly constrained land supply in later periods.
+</div>
+
+---
+
+## Regional Performance
+
+### Country-Level Aggregation
+```{r country_map}
+# Aggregate to country level (for NUTS models: first 2 chars; for country models: already done)
+if (region_key == "country" || region_key == "region") {
+  country_agg <- copy(region_stats)
+  if (region_key == "region") {
+    country_agg[, country := substr(get(region_key), 1, 2)]
+    country_agg <- country_agg[, .(Total_Target = sum(Total_Target), Total_Missed = sum(Total_Missed)),
+                                by = country]
+    country_agg[, Percent_Missed := round((Total_Missed / pmax(Total_Target, 1e-12)) * 100, 2)]
+  }
+  
+  # Try choropleth (works well when regions are countries or aggregated NUTS)
+  fig_map <- plot_geo(country_agg, locationmode = 'country names') %>%
+    add_trace(
+      z = ~as.numeric(Percent_Missed), 
+      locations = ~country,
+      color = ~as.numeric(Percent_Missed), colors = 'Reds',
+      text = ~paste("Country: ", country, "<br>Unallocated Area Ratio: ", Percent_Missed, 
+                     "%<br>Total Target Request: ", round(Total_Target, 0), " km²"),
+      hoverinfo = 'text'
+    ) %>%
+    layout(
+      title = "Percentage of Target Area Missed by Country",
+      geo = list(
+        scope = 'europe',
+        projection = list(type = 'natural earth'),
+        showframe = FALSE,
+        showcoastlines = TRUE,
+        bgcolor = "transparent"
+      )
+    )
+  fig_map
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This choropleth map visualizes the geographical distribution of missing rates across countries. Darker red indicates a higher percentage of missed target area, helping to pinpoint spatial clusters or specific nations where the downscaling performance drops.
+</div>
+
+### Top Regions by Missed Area
+```{r bar_chart_regions}
+# Show top 20 regions by missed area
+top_regions <- region_stats[order(-Total_Missed)][1:min(20, .N)]
+
+fig_bar <- plot_ly(top_regions, y = ~get(region_key), x = ~Total_Missed, 
+                    type = 'bar', orientation = 'h',
+                    marker = list(color = ~as.numeric(Percent_Missed), colorscale = 'Reds',
+                                  showscale = TRUE, colorbar = list(title = "% Missed")),
+                    text = ~paste0("Region: ", get(region_key), "<br>Unallocated Area: ", round(Total_Missed, 0), " km²<br>Mismatch Ratio: ", Percent_Missed, "%"),
+                    hoverinfo = 'text') %>%
+  layout(
+    title = "Top 20 Regions by Missed Area",
+    xaxis = list(title = "Total Mismatch vs Target Area (km²)"),
+    yaxis = list(title = "", categoryorder = "total ascending")
+  )
+fig_bar
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This bar chart ranks regions by their total missed target area. The color intensity reflects the percentage of the target missed. Use this to identify regions where the downscaling algorithm struggled most to place the required land use transitions.
+</div>
+
+### Target vs Missed Area Scatter Plot
+```{r scatter_plot}
+fig_scatter <- plot_ly(region_stats, x = ~Total_Target, y = ~Total_Missed, 
+                       type = 'scatter', mode = 'markers',
+                       color = if ("scenario" %in% names(region_stats) && length(unique(region_stats$scenario)) > 1) ~scenario else ~Percent_Missed,
+                       colors = if ("scenario" %in% names(region_stats) && length(unique(region_stats$scenario)) > 1) "Set1" else NULL,
+                       text = ~paste0("Region: ", get(region_key), 
+                                      if("scenario" %in% names(region_stats)) paste0("<br>Scenario: ", scenario) else "",
+                                      "<br>Requested Target: ", round(Total_Target, 0), " km²",
+                                      "<br>Unallocated Area: ", round(Total_Missed, 0), " km²",
+                                      "<br>Missing %: ", Percent_Missed),
+                       hoverinfo = 'text',
+                       marker = list(size = 10, colorscale = if(!("scenario" %in% names(region_stats) && length(unique(region_stats$scenario)) > 1)) 'Viridis' else NULL, showscale = !("scenario" %in% names(region_stats) && length(unique(region_stats$scenario)) > 1), colorbar = list(title = "Missing %"))) %>%
+  add_trace(x = c(min(region_stats$Total_Target[region_stats$Total_Target > 0], na.rm=T), max(region_stats$Total_Target, na.rm=T)), 
+            y = c(min(region_stats$Total_Target[region_stats$Total_Target > 0], na.rm=T), max(region_stats$Total_Target, na.rm=T)) * 0.01, 
+            type = 'scatter', mode = 'lines', line = list(color = 'red', dash = 'dash'), 
+            name = "1% Missing Threshold", inherit = FALSE, hoverinfo = 'skip') %>%
+  layout(
+    title = "Scatter Plot: Target vs Missed Area by Region",
+    xaxis = list(title = "Total Requested Target Area (km²)", type = "log"),
+    yaxis = list(title = "Total Missing/Unallocated Area (km²)", type = "log")
+  )
+fig_scatter
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This scatter plot shows the relationship between a region's total target area and its missed area. Regions above the main cluster have unusually high missed areas relative to their targets, indicating severe algorithmic difficulties rather than just large scale.
+</div>
+
+---
+
+## Transition & Land Use Performance
+
+### Transition Error Heatmap
+```{r transition_heatmap}
+if (!is.null(report_df) && nrow(report_df) > 0 && all(c("from_class", "to_class", "value", "ds_val") %in% names(report_df))) {
+  heat_agg <- report_df[, .(
+    target = sum(value, na.rm = TRUE),
+    downscaled = sum(ds_val, na.rm = TRUE)
+  ), by = .(from_class, to_class)]
+  heat_agg[, diff := abs(target - downscaled)]
+  
+  fig_heat <- plot_ly(
+    data = heat_agg,
+    x = ~to_class,
+    y = ~from_class,
+    z = ~diff,
+    type = "heatmap",
+    colorscale = "Reds",
+    hoverinfo = "text",
+    text = ~paste("Original (From):", from_class, "<br>Target (To):", to_class, 
+                  "<br>Requested Target:", round(target, 1), "km²", 
+                  "<br>Actually Downscaled:", round(downscaled, 1), "km²", 
+                  "<br>Absolute Mismatch:", round(diff, 1), "km²")
+  ) %>% layout(
+    title = "Transition Error Heatmap (Absolute Mismatch in km²)",
+    xaxis = list(title = "Target Land Use (To Class)"),
+    yaxis = list(title = "Original Land Use (From Class)")
+  )
+  fig_heat
+} else {
+  cat("ℹ️ Data for transition heatmap not available.")
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This heatmap visualizes the absolute deviation for each specific land use transition (From Class &rarr; To Class). Darker red cells immediately highlight the most problematic transitions, helping you trace systemic issues back to particular crop or land categories.
+</div>
+
+### Transition-Level Target Matching
+
+*Detailed comparison of targets vs. downscaled areas per transition.*
+
+```{r transition_matching}
+if (!is.null(report_df) && nrow(report_df) > 0) {
+  # Normalize column names
+  if (".SCEN_ID." %in% names(report_df)) setnames(report_df, ".SCEN_ID.", "scenario")
+  if (".REGION_ID." %in% names(report_df)) setnames(report_df, ".REGION_ID.", "region")
+  
+  # Aggregate to transition level across all regions
+  trans_cols <- intersect(c("from_class", "to_class", "times"), names(report_df))
+  if (length(trans_cols) >= 2 && "value" %in% names(report_df) && "ds_val" %in% names(report_df)) {
+    trans_agg <- report_df[, .(
+      target = sum(value, na.rm = TRUE),
+      downscaled = sum(ds_val, na.rm = TRUE)
+    ), by = trans_cols]
+    trans_agg[, diff := abs(target - downscaled)]
+    trans_agg[, pct_diff := round(diff / pmax(target, 1e-12) * 100, 2)]
+    trans_agg <- trans_agg[target > 0 | downscaled > 0]
+    
+    # Summary chart: top transitions by absolute diff
+    top_trans <- trans_agg[order(-diff)][1:min(20, .N)]
+    time_str <- if ("times" %in% names(top_trans)) paste0(" (", top_trans$times, ")") else ""
+    top_trans[, label := paste0(from_class, " → ", to_class, time_str)]
+    
+    has_scen_trans <- "scenario" %in% names(trans_agg) && length(unique(trans_agg$scenario)) > 1
+    
+    fig_trans <- plot_ly(top_trans, y = ~label, x = ~diff, type = 'bar', orientation = 'h',
+                          marker = list(color = ~as.numeric(pct_diff), colorscale = 'YlOrRd',
+                                        showscale = TRUE, colorbar = list(title = "Error %")),
+                          text = ~paste0("Requested Target: ", round(target, 1), " km²<br>Actually Downscaled: ", 
+                                          round(downscaled, 1), " km²<br>Absolute Mismatch: ", round(diff, 2), " km²"),
+                          hoverinfo = 'text') %>%
+      layout(
+        title = "Top 20 Transitions by Absolute Target Mismatch",
+        xaxis = list(title = "Absolute Mismatch (Target vs Downscaled Area in km²)"),
+        yaxis = list(title = "", categoryorder = "total ascending"),
+        margin = list(l = 250)
+      )
+      
+    fig_scatter_trans <- plot_ly(trans_agg[target > 0 & downscaled > 0], x = ~target, y = ~downscaled, type = 'scatter', mode = 'markers',
+                                 color = if (has_scen_trans) ~scenario else ~diff,
+                                 colors = if (has_scen_trans) "Set1" else NULL,
+                                 text = ~paste0("Transition: ", from_class, " → ", to_class, 
+                                                if("times" %in% names(trans_agg)) paste0("<br>Time: ", times) else "",
+                                                if(has_scen_trans) paste0("<br>Scenario: ", scenario) else "",
+                                                "<br>Requested Target: ", round(target, 1), " km²",
+                                                "<br>Actually Downscaled: ", round(downscaled, 1), " km²",
+                                                "<br>Absolute Mismatch: ", round(diff, 2), " km² (", pct_diff, "%)"),
+                                 hoverinfo = 'text',
+                                 marker = list(size = 8, colorscale = if(!has_scen_trans) 'Viridis' else NULL, showscale = !has_scen_trans, colorbar = list(title = "Diff (km²)")))
+    
+    max_val <- max(max(trans_agg$target, na.rm = TRUE), max(trans_agg$downscaled, na.rm = TRUE))
+    min_val <- min(trans_agg$target[trans_agg$target > 0], trans_agg$downscaled[trans_agg$downscaled > 0], na.rm = TRUE)
+    if (is.infinite(min_val) || is.na(min_val)) min_val <- 0.01
+    min_val <- max(0.01, min_val)
+    
+    fig_scatter_trans <- fig_scatter_trans %>% 
+      layout(
+        title = "Transition-Level: Target vs Downscaled Area",
+        xaxis = list(title = "Requested Target Area (km²)", type = "log", range = c(log10(min_val), log10(max_val * 1.5))),
+        yaxis = list(title = "Actual Downscaled Area Achieved (km²)", type = "log", range = c(log10(min_val), log10(max_val * 1.5)))
+      ) %>%
+      add_trace(x = c(min_val, max_val), y = c(min_val, max_val), type = 'scatter', mode = 'lines', 
+                line = list(color = 'white', dash = 'dash'), name = "Perfect Match", inherit = FALSE, hoverinfo = 'skip') %>%
+      add_trace(x = c(min_val, max_val), y = c(min_val, max_val) * 1.01, type = 'scatter', mode = 'lines', 
+                line = list(color = 'red', dash = 'dot', width = 1), name = "+1% Bound", inherit = FALSE, hoverinfo = 'skip') %>%
+      add_trace(x = c(min_val, max_val), y = c(min_val, max_val) * 0.99, type = 'scatter', mode = 'lines', 
+                line = list(color = 'red', dash = 'dot', width = 1), name = "-1% Bound", inherit = FALSE, hoverinfo = 'skip')
+    
+    # ---------------------------------------------------------
+    # Region-Level Scatter Plot across all Transitions
+    # ---------------------------------------------------------
+    df_unagg <- copy(report_df)
+    if ("value" %in% names(df_unagg) && "ds_val" %in% names(df_unagg) && "region" %in% names(df_unagg)) {
+        df_unagg <- df_unagg[value > 0 | ds_val > 0]
+        df_unagg[, trans_label := paste0(from_class, " → ", to_class)]
+        df_unagg[, diff := abs(value - ds_val)]
+        df_unagg[, pct_diff := round(diff / pmax(value, 1e-12) * 100, 2)]
+        
+        # Create categories
+        df_unagg[, Error_Category := fcase(
+          pct_diff < 1, "Match (<1% Error)",
+          pct_diff <= 5, "Minor Deviation (1-5%)",
+          default = "Severe Deviation (>5%)"
+        )]
+        df_unagg$Error_Category <- factor(df_unagg$Error_Category, levels = c("Match (<1% Error)", "Minor Deviation (1-5%)", "Severe Deviation (>5%)"))
+        
+        has_scen_unagg <- "scenario" %in% names(df_unagg) && length(unique(df_unagg$scenario)) > 1
+
+        fig_scatter_all <- plot_ly(df_unagg, x = ~value, y = ~ds_val, type = 'scatter', mode = 'markers',
+                                   color = if(has_scen_unagg) ~scenario else ~Error_Category,
+                                   colors = if(has_scen_unagg) "Set1" else c("Match (<1% Error)" = "#2ecc71", "Minor Deviation (1-5%)" = "#f39c12", "Severe Deviation (>5%)" = "#e74c3c"),
+                                   text = ~paste0("Region: ", region,
+                                                  if(has_scen_unagg) paste0("<br>Scenario: ", scenario) else "",
+                                                  "<br>Transition: ", trans_label, 
+                                                  "<br>Requested Target: ", round(value, 2), " km²",
+                                                  "<br>Actually Downscaled: ", round(ds_val, 2), " km²",
+                                                  "<br>Mismatch: ", round(diff, 2), " km² (", pct_diff, "%)"),
+                                   hoverinfo = 'text',
+                                   marker = list(size = 6, opacity = 0.6))
+                                   
+        max_val_all <- max(max(df_unagg$value, na.rm = TRUE), max(df_unagg$ds_val, na.rm = TRUE))
+        min_val_all <- min(df_unagg$value[df_unagg$value > 0], df_unagg$ds_val[df_unagg$ds_val > 0], na.rm = TRUE)
+        if (is.infinite(min_val_all) || is.na(min_val_all)) min_val_all <- 0.01
+        min_val_all <- max(0.01, min_val_all)
+        
+        fig_scatter_all <- fig_scatter_all %>%
+          layout(
+            title = "Region-Level Target vs Downscaled Area (All Regions & Transitions)",
+            xaxis = list(title = "Requested Target Area (km²)", type = "log", range = c(log10(min_val_all), log10(max_val_all * 1.5))),
+            yaxis = list(title = "Actual Downscaled Area Achieved (km²)", type = "log", range = c(log10(min_val_all), log10(max_val_all * 1.5)))
+          ) %>%
+          add_trace(x = c(min_val_all, max_val_all), y = c(min_val_all, max_val_all), type = 'scatter', mode = 'lines',
+                    line = list(color = 'white', dash = 'dash'), name = "Perfect Match", inherit = FALSE, hoverinfo = 'skip') %>%
+          add_trace(x = c(min_val_all, max_val_all), y = c(min_val_all, max_val_all) * 1.01, type = 'scatter', mode = 'lines',
+                    line = list(color = 'red', dash = 'dot', width = 1), name = "+1% Bound", inherit = FALSE, hoverinfo = 'skip') %>%
+          add_trace(x = c(min_val_all, max_val_all), y = c(min_val_all, max_val_all) * 0.99, type = 'scatter', mode = 'lines',
+                    line = list(color = 'red', dash = 'dot', width = 1), name = "-1% Bound", inherit = FALSE, hoverinfo = 'skip')
+        
+        ui_elems <- htmltools::browsable(htmltools::tagList(
+          fig_trans,
+          htmltools::br(),
+          fig_scatter_trans,
+          htmltools::br(),
+          fig_scatter_all,
+          htmltools::br(),
+          htmltools::tags$h4("Full Transition Data"),
+          datatable(trans_agg[order(-diff)], rownames = FALSE, filter = "top", options = list(pageLength = 15))
+        ))
+    } else {
+        ui_elems <- htmltools::browsable(htmltools::tagList(
+          fig_trans,
+          htmltools::br(),
+          fig_scatter_trans,
+          htmltools::br(),
+          htmltools::tags$h4("Full Transition Data"),
+          datatable(trans_agg[order(-diff)], rownames = FALSE, filter = "top", options = list(pageLength = 15))
+        ))
+    }
+    
+    ui_elems
+  } else {
+    cat("ℹ️ Report data does not have the expected columns for transition-level analysis.")
+  }
+} else {
+  cat("ℹ️ No transition-level target performance data available for this run.")
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> The bar chart displays the top transitions with the largest absolute mismatch between target and downscaled area, while the scatter plot provides a global view of Target vs. Downscaled areas for all transitions. Deviations from the dashed 1:1 line in the scatter plot indicate transitions where the algorithm under- or over-allocated area.
+</div>
+
+---
+
+## Algorithmic Diagnostics
+
+### Failure Mode Analysis (by Region)
+```{r failure_bars}
+if (length(fail_cols) > 0 && any(region_stats[, lapply(.SD, sum, na.rm = TRUE), .SDcols = fail_cols] > 0)) {
+  fail_melt <- melt(region_stats, id.vars = region_key, 
+                    measure.vars = fail_cols,
+                    variable.name = "Failure_Mode", value.name = "Area")
+  
+  # Top 15 regions by total missed. unique() is essential: region_stats can
+  # hold one row per scenario x region, and duplicated names crash factor().
+  top15 <- unique(region_stats[order(-Total_Missed)][[region_key]])
+  top15 <- top15[seq_len(min(15, length(top15)))]
+  fail_melt_top <- fail_melt[get(region_key) %in% top15]
+  fail_melt_top[[region_key]] <- factor(fail_melt_top[[region_key]], levels = rev(top15))
+  
+  fig_fail <- plot_ly(fail_melt_top, y = ~get(region_key), x = ~Area, color = ~Failure_Mode, 
+                       type = 'bar', orientation = 'h',
+                       colors = c('#E63946', '#F4A261', '#2A9D8F', '#264653')) %>%
+    layout(
+      barmode = 'stack',
+      title = "Top 15 Regions: Missing Area by Failure Mode",
+      xaxis = list(title = "Total Area Lost due to Failure (km²)"),
+      yaxis = list(title = "")
+    )
+  fig_fail
+} else {
+  cat("ℹ️ No failure mode data available for this run.")
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This stacked bar chart breaks down the missing area in the worst-performing regions by specific algorithmic failure modes (e.g., Start Area Insufficient, Restriction Blocking, Solver Loss). Use this to diagnose exactly <em>why</em> a region is failing.
+</div>
+
+### Start Map Harmonization Quality
+
+*How well does the harmonized start map cover the transition targets?*
+
+```{r harmonization_check}
+if (!is.null(harm_df) && nrow(harm_df) > 0) {
+  deficit_rows <- harm_df[deficit > 0.01]
+  
+  cat(sprintf("**%d** out of **%d** region-class combinations have a deficit (demand > supply).\n\n", 
+              nrow(deficit_rows), nrow(harm_df)))
+  
+  if (nrow(deficit_rows) > 0) {
+    # Show top 20 worst deficits
+    top_deficits <- deficit_rows[order(-deficit)][1:min(20, .N)]
+    
+    fig_harm <- plot_ly(top_deficits, 
+                         y = ~paste(Ns_reg, from_class, sep = " | "),
+                         x = ~deficit,
+                         type = 'bar', orientation = 'h',
+                         marker = list(color = ~as.numeric(pct_deficit), colorscale = 'Reds',
+                                       showscale = TRUE, colorbar = list(title = "% Deficit")),
+                         text = ~paste0("Transition: ", from_class, "<br>Region: ", Ns_reg, 
+                                        "<br>Required Start Area: ", round(max_demanded, 1), 
+                                        " km²<br>Available Start Area: ", round(available_area, 1), " km²"),
+                         hoverinfo = 'text') %>%
+      layout(
+        title = "Top 20 Region-Class Combinations with Insufficient Start Map Area",
+        xaxis = list(title = "Area Deficit in Start Map (km²)"),
+        yaxis = list(title = "", categoryorder = "total ascending")
+      )
+    fig_harm
+  }
+  
+  # Full table
+  cat("\n#### Full Harmonization Check Data\n")
+  datatable(harm_df[order(-deficit)], rownames = FALSE, filter = "top",
+            options = list(pageLength = 10))
+} else {
+  cat("ℹ️ No harmonization check data available for this run.")
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This chart (if present) highlights region-class combinations where the available area in the start map is insufficient to meet the total transition demand. A deficit here indicates a structural issue where it is mathematically impossible to fulfill the targets given the starting conditions.
+</div>
+
+### Area Conservation
+
+*Is total pixel area conserved through the downscaling solve?*
+
+```{r area_conservation}
+if (!is.null(conserv_df) && nrow(conserv_df) > 0) {
+  total_start <- sum(conserv_df$start_total, na.rm = TRUE)
+  total_ds <- sum(conserv_df$ds_total, na.rm = TRUE)
+  total_dev <- total_ds - total_start
+  pct_dev <- round(abs(total_dev) / pmax(total_start, 1e-12) * 100, 4)
+  
+  n_regions_dev <- sum(conserv_df$n_pixels_with_deviation > 0)
+  max_dev <- max(conserv_df$max_pixel_deviation, na.rm = TRUE)
+  
+  boxes_c <- layout_columns(
+    value_box(
+      title = "Total Start Area (km²)",
+      value = formatC(total_start, format = "f", big.mark = ",", digits = 0),
+      theme = "info"
+    ),
+    value_box(
+      title = "Total Downscaled Area (km²)",
+      value = formatC(total_ds, format = "f", big.mark = ",", digits = 0),
+      theme = "info"
+    ),
+    value_box(
+      title = "Global Area Deviation",
+      value = paste0(formatC(total_dev, format = "f", big.mark = ",", digits = 2), " km² (", pct_dev, "%)"),
+      theme = if (pct_dev > 0.1) "danger" else "success"
+    ),
+    value_box(
+      title = "Max Pixel Deviation",
+      value = paste0(round(max_dev, 4), " km²"),
+      theme = if (max_dev > 1) "warning" else "success"
+    )
+  )
+  boxes_c
+  
+  # Show regions with deviations
+  if (n_regions_dev > 0) {
+    cat(sprintf("\n\n**%d** region-year combinations have pixels with >0.01 km² deviation.\n", n_regions_dev))
+    
+    dev_regions <- conserv_df[n_pixels_with_deviation > 0][order(-max_pixel_deviation)]
+    datatable(dev_regions, rownames = FALSE, options = list(pageLength = 10, dom = 'tp'))
+  } else {
+    cat("\n\n✅ Perfect area conservation across all pixels and regions.")
+  }
+} else {
+  cat("ℹ️ No area conservation data available for this run.")
+}
+```
+
+### Pixel Deviation Distribution
+```{r dev_boxplot}
+if (!is.null(conserv_df) && nrow(conserv_df) > 0 && "max_pixel_deviation" %in% names(conserv_df)) {
+  # Group by region if available
+  if ("region" %in% names(conserv_df) || "Ns_reg" %in% names(conserv_df) || "country" %in% names(conserv_df)) {
+    reg_col <- intersect(c("region", "Ns_reg", "country"), names(conserv_df))[1]
+    fig_box <- plot_ly(conserv_df, y = ~max_pixel_deviation, x = ~get(reg_col), type = "box", color = I("#3498db")) %>%
+      layout(
+        title = "Max Pixel Deviation by Region",
+        xaxis = list(title = "Geographic Region", tickangle = -45),
+        yaxis = list(title = "Maximum Single-Pixel Area Deviation (km²)")
+      )
+  } else {
+    fig_box <- plot_ly(conserv_df, y = ~max_pixel_deviation, type = "box", name = "All Regions", color = I("#3498db")) %>%
+      layout(
+        title = "Distribution of Max Pixel Deviation",
+        yaxis = list(title = "Maximum Single-Pixel Area Deviation (km²)")
+      )
+  }
+  fig_box
+} else {
+  cat("ℹ️ Area conservation data for deviation boxplot not available.")
+}
+```
+
+<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;">
+  <strong>Interpretation:</strong> This distribution plot shows the maximum pixel-level area deviation by region. It verifies area conservation: if deviations are clustered near zero, pixels are cleanly conserving area. High outliers indicate numerical instability or solver leaks in specific regions.
+</div>
+
+---
+
+## Prior Impact Analysis
+
+*Summary of the regional impact metrics from spatial priors.*
+*This analysis compares the final downscaling results against a 'flat-prior' counterfactual to quantify how much the spatial priors shifted land allocations.*
+
+```{r prior_impact_plots}
+prior_impact_df <- load_if_exists(params$prior_impact_file)
+if (params$target_scenario != "ALL" && !is.null(prior_impact_df)) {
+  scen_col_prior <- if ("scenario" %in% names(prior_impact_df)) "scenario" else if (".SCEN_ID." %in% names(prior_impact_df)) ".SCEN_ID." else NULL
+  if (!is.null(scen_col_prior)) {
+    prior_impact_df <- prior_impact_df[get(scen_col_prior) == params$target_scenario]
+  }
+}
+if (!is.null(prior_impact_df) && nrow(prior_impact_df) > 0) {
+  
+  # Filter out trivial rows (e.g. base year) where nothing was relocated and no information was gained
+  # Normalize names
+  if (".SCEN_ID." %in% names(prior_impact_df)) setnames(prior_impact_df, ".SCEN_ID.", "scenario")
+  if (all(c("total_relocated_area_km2", "KL_divergence", "target_area") %in% names(prior_impact_df))) {
+    prior_impact_df <- prior_impact_df[target_area > 0 & (total_relocated_area_km2 > 1e-6 | KL_divergence > 1e-6)]
+  }
+
+  has_scen_prior <- ".SCEN_ID." %in% names(prior_impact_df) || "scenario" %in% names(prior_impact_df)
+  if (".REGION_ID." %in% names(prior_impact_df)) setnames(prior_impact_df, ".REGION_ID.", "region")
+  if (has_scen_prior && length(unique(prior_impact_df$scenario)) <= 1) has_scen_prior <- FALSE
+  
+  # 1. Total Relocated Area by Region
+  if ("region" %in% names(prior_impact_df) && "total_relocated_area_km2" %in% names(prior_impact_df)) {
+    agg_cols <- if (has_scen_prior) c("region", "scenario") else "region"
+    reloc_reg <- prior_impact_df[, .(total_relocated = sum(total_relocated_area_km2, na.rm = TRUE)), by = agg_cols]
+    
+    # Get top 20 overall regions to keep plot manageable
+    top_regions <- prior_impact_df[, .(tot = sum(total_relocated_area_km2, na.rm = TRUE)), by = region][order(-tot)][1:min(20, .N)]$region
+    reloc_reg <- reloc_reg[region %in% top_regions]
+    reloc_reg$region <- factor(reloc_reg$region, levels = rev(top_regions))
+    
+    fig_reloc <- plot_ly(reloc_reg, y = ~region, x = ~total_relocated, 
+                         color = if(has_scen_prior) ~scenario else I('#2ecc71'),
+                         colors = if(has_scen_prior) "Set1" else NULL,
+                         type = 'bar', orientation = 'h',
+                         text = ~paste0("Region: ", region,
+                                        if(has_scen_prior) paste0("<br>Scenario: ", scenario) else "",
+                                        "<br>Area Relocated by Priors: ", round(total_relocated, 1), " km²"),
+                         hoverinfo = 'text') %>%
+      layout(
+        title = "Top 20 Regions by Total Relocated Area (Prior Impact)",
+        xaxis = list(title = "Total Area Reallocated due to Priors (km²)"),
+        yaxis = list(title = ""),
+        barmode = if(has_scen_prior) 'group' else 'relative'
+      )
+    print(htmltools::tagList(fig_reloc))
+    cat('\n<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;"><strong>Interpretation:</strong> This grouped bar chart shows the regions where spatial priors caused the largest absolute shift in pixel allocations compared to a flat-prior counterfactual. High values indicate that priors strongly pulled transitions away from the "naive" algorithmic placement.</div>\n<br><br>\n')
+  }
+  
+  # 2. Average KL Divergence by Transition
+  if (all(c("from_class", "to_class", "KL_divergence", "target_area") %in% names(prior_impact_df))) {
+    # Weighted average KL divergence
+    agg_kl <- if (has_scen_prior) c("from_class", "to_class", "scenario") else c("from_class", "to_class")
+    kl_trans <- prior_impact_df[target_area > 0, .(
+      avg_KL = weighted.mean(KL_divergence, w = target_area, na.rm = TRUE)
+    ), by = agg_kl]
+    
+    # If multiple scenarios, we use a grouped bar chart of the top transitions by Info Gain instead of a complex faceted heatmap
+    if (has_scen_prior) {
+      kl_trans[, label := paste0(from_class, " → ", to_class)]
+      # Get top transitions by max KL across scenarios
+      top_trans_kl <- kl_trans[, .(max_kl = max(avg_KL, na.rm = TRUE)), by = label][order(-max_kl)][1:min(20, .N)]$label
+      kl_trans_top <- kl_trans[label %in% top_trans_kl]
+      kl_trans_top$label <- factor(kl_trans_top$label, levels = rev(top_trans_kl))
+      
+      fig_kl <- plot_ly(kl_trans_top, y = ~label, x = ~avg_KL, color = ~scenario, colors = "Set1",
+                        type = 'bar', orientation = 'h',
+                        text = ~paste0("Transition: ", label, "<br>Scenario: ", scenario, "<br>Spatial Info Gain (KL): ", round(avg_KL, 3)),
+                        hoverinfo = 'text') %>%
+        layout(
+          title = "Top 20 Transitions by Spatial Info Gain (KL Divergence)",
+          xaxis = list(title = "Average Information Gain (KL Divergence)"),
+          yaxis = list(title = ""),
+          barmode = 'group',
+          margin = list(l = 150)
+        )
+    } else {
+      fig_kl <- plot_ly(kl_trans, x = ~to_class, y = ~from_class, z = ~avg_KL, 
+                        type = "heatmap", colorscale = "Viridis",
+                        hoverinfo = "text",
+                        text = ~paste("Original (From):", from_class, "<br>Target (To):", to_class, "<br>Spatial Info Gain (KL):", round(avg_KL, 3))) %>%
+        layout(
+          title = "Spatial Info Gain (KL Divergence) by Transition",
+          xaxis = list(title = "Target Land Use (To Class)"),
+          yaxis = list(title = "Original Land Use (From Class)")
+        )
+    }
+    
+    print(htmltools::tagList(fig_kl))
+    cat('\n<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;"><strong>Interpretation:</strong> This visualizes the Spatial Information Gain (KL Divergence) introduced by spatial priors. Higher values indicate that priors heavily concentrated or dispersed the final spatial pattern compared to a uniform flat-prior distribution. Low/zero values mean the priors had little effect.</div>\n<br><br>\n')
+  }
+  
+  # 3. Relocated Area vs Target Area Scatter
+  if (all(c("from_class", "to_class", "target_area", "total_relocated_area_km2") %in% names(prior_impact_df))) {
+    agg_scatter <- if (has_scen_prior) c("from_class", "to_class", "scenario") else c("from_class", "to_class")
+    trans_reloc <- prior_impact_df[, .(
+      target = sum(target_area, na.rm=TRUE),
+      relocated = sum(total_relocated_area_km2, na.rm=TRUE)
+    ), by = agg_scatter]
+    
+    # Calculate ratio for color scaling if no scenarios
+    trans_reloc[, reloc_ratio := relocated / pmax(target, 1e-12)]
+    
+    fig_scatter_reloc <- plot_ly(trans_reloc, x = ~target, y = ~relocated, type = 'scatter', mode = 'markers',
+                                 color = if(has_scen_prior) ~scenario else ~reloc_ratio,
+                                 colors = if(has_scen_prior) "Set1" else NULL,
+                                 text = ~paste("Original (From):", from_class, "<br>Target (To):", to_class,
+                                               if(has_scen_prior) paste("<br>Scenario:", scenario) else "",
+                                               "<br>Target Area:", round(target, 1), "km²",
+                                               "<br>Relocated Area:", round(relocated, 1), "km²",
+                                               "<br>Relocated Ratio:", round(reloc_ratio * 100, 2), "%"),
+                                 hoverinfo = 'text',
+                                 marker = list(size = 8, colorscale = if(!has_scen_prior) 'Viridis' else NULL, showscale = !has_scen_prior, colorbar = list(title = "Relocated Ratio"))) %>%
+      layout(
+        title = "Prior Impact: Relocated vs Target Area by Transition",
+        xaxis = list(title = "Total Target Area (km²)", type = "log"),
+        yaxis = list(title = "Total Area Relocated by Priors (km²)", type = "log")
+      )
+    print(htmltools::tagList(fig_scatter_reloc))
+    cat('\n<div class="text-muted" style="font-size: 0.9em; margin-top: 10px;"><strong>Interpretation:</strong> This scatter plot compares the total target area for a transition against how much of that area was actively relocated by the spatial priors. Points higher up indicate transitions heavily driven by priors, while points near the bottom indicate priors played a passive role.</div>\n<br><br>\n')
+  }
+}
+```
+
+### Full Prior Impact Data
+
+```{r prior_impact_table}
+if (!is.null(prior_impact_df) && nrow(prior_impact_df) > 0) {
+  datatable(prior_impact_df, rownames = FALSE, filter = "top", 
+            options = list(pageLength = 10, autoWidth = TRUE))
+} else {
+  cat("ℹ️ No prior impact data available for this run.")
+}
+```
+
+---
+
+## Raw Data & Metadata
+
+### Full Summary Data
+
+```{r data_table}
+datatable(region_stats, filter = "top", rownames = FALSE,
+          options = list(pageLength = 15))
+```
+
+### Pipeline Data Sources
+
+*List of exogenous input files tracked during the pipeline execution.*
+
+```{r metadata_table}
+metadata_df <- load_if_exists(params$metadata_file)
+if (!is.null(metadata_df) && nrow(metadata_df) > 0) {
+  datatable(metadata_df, rownames = FALSE, filter = "top",
+            options = list(pageLength = 10, autoWidth = TRUE))
+} else {
+  cat("ℹ️ No source metadata tracked or file not found.")
+}
+```
+
+---
+
+## Run Plots
+
+*Diagnostic plots generated during this run (harmonization bars/scatter, spatial pre/post/delta maps, ...). Any PNG placed in the run output folder's `plots/` subdirectory is embedded here automatically.*
+
+```{r run_plots, results='asis', echo=FALSE}
+plots_dir <- file.path(dirname(params$diag_file), "plots")
+pngs <- if (dir.exists(plots_dir)) {
+  sort(list.files(plots_dir, pattern = "\\.png$", full.names = TRUE))
+} else character(0)
+
+if (length(pngs) > 0) {
+  for (p in pngs) {
+    cat(sprintf("### %s\n\n", gsub("_", " ", tools::file_path_sans_ext(basename(p)))))
+    cat(sprintf("![](%s)\n\n", normalizePath(p, winslash = "/")))
+  }
+} else {
+  cat("ℹ️ No run plots found (no `plots/` subfolder in the output directory).")
+}
+```

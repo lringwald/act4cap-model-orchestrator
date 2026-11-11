@@ -1,0 +1,217 @@
+---
+title: "`r paste(params$model_name, if(params$target_scenario != 'ALL') paste('Scenario:', params$target_scenario) else '', 'Livestock (LSU) Performance Dashboard')`"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    theme:
+      bslib: true
+      bootswatch: flatly
+    toc: true
+    toc_float: true
+params:
+  summary_file: NULL
+  report_file: NULL
+  model_name: "LAMASUS_GLOBIOM"
+  target_scenario: "ALL"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+options(scipen = 999)
+library(data.table)
+library(DT)
+library(ggplot2)
+library(plotly)
+library(bslib)
+library(htmltools)
+
+# --- Load data with graceful degradation ---
+load_if_exists <- function(path) {
+  if (!is.null(path) && file.exists(path)) fread(path) else NULL
+}
+
+summary_df <- load_if_exists(params$summary_file)
+report_df  <- load_if_exists(params$report_file)
+
+if (params$target_scenario != "ALL") {
+  if (!is.null(summary_df) && "scenario" %in% names(summary_df)) {
+    summary_df <- summary_df[scenario == params$target_scenario]
+  }
+  if (!is.null(report_df) && "scenario" %in% names(report_df)) {
+    report_df <- report_df[scenario == params$target_scenario]
+  }
+}
+```
+
+# {.tabset}
+
+## Executive Summary
+
+```{r value_boxes}
+if (!is.null(summary_df) && nrow(summary_df) > 0) {
+  tot_target     <- sum(summary_df$total_target, na.rm = TRUE)
+  tot_downscaled <- sum(summary_df$total_downscaled, na.rm = TRUE)
+  avg_rmsd       <- mean(summary_df$rmsd, na.rm = TRUE)
+  overall_pct    <- if (tot_target > 0) (tot_downscaled / tot_target) * 100 else 100
+  n_evals        <- sum(summary_df$n_targets, na.rm = TRUE)
+  n_scens        <- uniqueN(summary_df$scenario)
+} else if (!is.null(report_df) && nrow(report_df) > 0) {
+  tot_target     <- sum(report_df$target_val, na.rm = TRUE)
+  tot_downscaled <- sum(report_df$ds_val, na.rm = TRUE)
+  avg_rmsd       <- sqrt(mean(report_df$diff^2, na.rm = TRUE))
+  overall_pct    <- if (tot_target > 0) (tot_downscaled / tot_target) * 100 else 100
+  n_evals        <- nrow(report_df)
+  n_scens        <- uniqueN(report_df$scenario)
+} else {
+  tot_target <- 0; tot_downscaled <- 0; avg_rmsd <- 0; overall_pct <- 100; n_evals <- 0; n_scens <- 0
+}
+
+boxes <- layout_columns(
+  value_box(
+    title = "Total Livestock Targets (TLU / Heads)",
+    value = formatC(tot_target, format = "f", big.mark = ",", digits = 1),
+    theme = "primary"
+  ),
+  value_box(
+    title = "Total Downscaled LSU",
+    value = formatC(tot_downscaled, format = "f", big.mark = ",", digits = 1),
+    theme = "info"
+  ),
+  value_box(
+    title = "Target Conservation Rate",
+    value = paste0(round(overall_pct, 4), "%"),
+    theme = if (abs(overall_pct - 100) > 0.01) "danger" else "success"
+  ),
+  value_box(
+    title = "Mean Solver RMSD",
+    value = formatC(avg_rmsd, format = "e", digits = 2),
+    theme = if (avg_rmsd > 1e-2) "warning" else "success"
+  ),
+  value_box(
+    title = "Total Target Equations Satisfied",
+    value = formatC(n_evals, format = "d", big.mark = ","),
+    theme = "secondary"
+  )
+)
+boxes
+```
+
+<br>
+
+### Overall Performance Interpretation
+
+All livestock optimization targets across European countries and scenarios are solved down to the individual pixel with econometric priors and dynamic pasture area offsets. The conservation rate confirms that macro-regional targets from GLOBIOM are strictly conserved without administrative cliff borders.
+
+---
+
+## Livestock Types & Systems
+
+```{r pop_type_table}
+if (!is.null(summary_df) && nrow(summary_df) > 0) {
+  type_summary <- summary_df[, .(
+    Total_Target     = round(sum(total_target, na.rm = TRUE), 2),
+    Total_Downscaled = round(sum(total_downscaled, na.rm = TRUE), 2),
+    Mean_RMSD        = formatC(mean(rmsd, na.rm = TRUE), format = "e", digits = 2),
+    Max_Rel_Diff_Pct = round(max(max_rel_diff, na.rm = TRUE) * 100, 5),
+    Pct_Achieved     = round(if (sum(total_target) > 0) (sum(total_downscaled) / sum(total_target)) * 100 else 100, 4)
+  ), by = .(pop_type)][order(-Total_Target)]
+  
+  datatable(
+    type_summary,
+    colnames = c("Livestock Type & System", "Total Target", "Total Downscaled", "Mean RMSD", "Max Rel Diff (%)", "% Achieved"),
+    rownames = FALSE,
+    options = list(pageLength = 15, dom = 'Bfrtip', scrollX = TRUE)
+  )
+}
+```
+
+<br>
+
+```{r pop_type_chart}
+if (!is.null(summary_df) && nrow(summary_df) > 0) {
+  p_df <- summary_df[, .(Total_LSU = sum(total_downscaled, na.rm = TRUE)), by = .(pop_type)][order(-Total_LSU)][1:min(20, .N)]
+  
+  p <- ggplot(p_df, aes(x = reorder(pop_type, Total_LSU), y = Total_LSU, fill = Total_LSU)) +
+    geom_col(show.legend = FALSE) +
+    coord_flip() +
+    scale_fill_viridis_c(option = "mako") +
+    scale_y_continuous(labels = scales::comma) +
+    labs(
+      title = "Top 20 Livestock Classes by Total Downscaled Volume",
+      x = "System & Animal Type",
+      y = "Total Downscaled Heads / TLU"
+    ) +
+    theme_minimal()
+  
+  ggplotly(p)
+}
+```
+
+---
+
+## Country Performance
+
+```{r country_breakdown}
+if (!is.null(report_df) && nrow(report_df) > 0) {
+  country_summary <- report_df[, .(
+    Total_Target     = round(sum(target_val, na.rm = TRUE), 2),
+    Total_Downscaled = round(sum(ds_val, na.rm = TRUE), 2),
+    RMSD             = formatC(sqrt(mean(diff^2, na.rm = TRUE)), format = "e", digits = 2),
+    Max_Diff         = round(max(diff, na.rm = TRUE), 4),
+    Pct_Achieved     = round(if (sum(target_val) > 0) (sum(ds_val) / sum(target_val)) * 100 else 100, 4)
+  ), by = .(GLOB_country)][order(-Total_Target)]
+  
+  datatable(
+    country_summary,
+    colnames = c("Country", "Total Target", "Total Downscaled", "RMSD", "Max Diff", "% Achieved"),
+    rownames = FALSE,
+    options = list(pageLength = 15, dom = 'Bfrtip', scrollX = TRUE)
+  )
+}
+```
+
+<br>
+
+```{r country_chart}
+if (!is.null(report_df) && nrow(report_df) > 0) {
+  c_plot <- report_df[, .(Total_LSU = sum(ds_val, na.rm = TRUE)), by = .(GLOB_country)][order(-Total_LSU)]
+  
+  p2 <- ggplot(c_plot, aes(x = reorder(GLOB_country, Total_LSU), y = Total_LSU, fill = Total_LSU)) +
+    geom_col(show.legend = FALSE) +
+    coord_flip() +
+    scale_fill_viridis_c(option = "viridis") +
+    scale_y_continuous(labels = scales::comma) +
+    labs(
+      title = "Livestock Allocation by Country",
+      x = "Country",
+      y = "Total Downscaled Units"
+    ) +
+    theme_minimal()
+  
+  ggplotly(p2)
+}
+```
+
+---
+
+## Detailed Audit Log
+
+```{r detailed_audit}
+if (!is.null(report_df) && nrow(report_df) > 0) {
+  audit_view <- report_df[order(-diff)][1:min(1000, .N), .(
+    scenario, GLOB_country, times, pop_type, 
+    target_val = round(target_val, 4), 
+    ds_val = round(ds_val, 4), 
+    diff = formatC(diff, format = "e", digits = 2), 
+    pct_achieved = round(pct_achieved, 4)
+  )]
+  
+  datatable(
+    audit_view,
+    colnames = c("Scenario", "Country", "Year", "System.Type", "Target", "Downscaled", "Abs Diff", "% Achieved"),
+    rownames = FALSE,
+    filter = 'top',
+    options = list(pageLength = 15, scrollX = TRUE)
+  )
+}
+```
