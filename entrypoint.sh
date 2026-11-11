@@ -90,12 +90,35 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
            "$WORK_DIR/00_inputs/swatplus_assets" \
            "$WORK_DIR/00_inputs/biodiversity_assets" \
            "$WORK_DIR/01_interimmodel/gamble-cascade" \
+           "$WORK_DIR/01_interimmodel/snapshots" \
            "$WORK_DIR/02_postmodels/swatplus" \
            "$WORK_DIR/02_postmodels/biodiversity_link" \
            "$WORK_DIR/03_outputs/downscaling" \
            "$WORK_DIR/$OUTPUT_DIR" \
            "$WORK_DIR/99_archive" \
            "$WORK_DIR/logs"
+
+  # Sync or source gamble-cascade and its submodules (cascade-core, gamble-core)
+  GAMBLE_TARGET="$WORK_DIR/01_interimmodel/gamble-cascade"
+  SNAPSHOT_MODE="${CASCADE_ENGINE_SOURCE:-live}"
+  if [ "$SNAPSHOT_MODE" = "live" ] || [ "$SNAPSHOT_MODE" = "freeze" ]; then
+    if [ ! -f "$GAMBLE_TARGET/pipelines/AGMIP/run_downscaling.R" ]; then
+      echo ">>> Initializing gamble-cascade repository in $GAMBLE_TARGET..."
+      git clone --recursive https://github.com/lringwald/gamble-cascade.git "$GAMBLE_TARGET" 2>/dev/null || true
+    elif [ -d "$GAMBLE_TARGET/.git" ]; then
+      echo ">>> Sourcing fresh updates for gamble-cascade from GitHub..."
+      (cd "$GAMBLE_TARGET" && git fetch origin && git merge origin/main --ff-only 2>/dev/null && git submodule update --init --recursive 2>/dev/null) || true
+    fi
+  elif [[ "$SNAPSHOT_MODE" == snapshot:* ]]; then
+    SNAP_NAME="${SNAPSHOT_MODE#snapshot:}"
+    SNAP_DIR="$WORK_DIR/01_interimmodel/snapshots/$SNAP_NAME"
+    if [ -d "$SNAP_DIR" ]; then
+      echo ">>> [Reproducibility] Activating frozen snapshot: $SNAP_DIR"
+      export CASCADING_GAMBLE_DIR="$SNAP_DIR"
+    else
+      echo "WARNING: Requested snapshot '$SNAP_NAME' not found in $WORK_DIR/01_interimmodel/snapshots/."
+    fi
+  fi
 
   # Consolidate legacy loose directories on /mnt/wdrv into ACT4CAP-model-pipeline if present
   if [ "$WDRV_BASE" = "/mnt/wdrv" ]; then

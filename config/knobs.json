@@ -338,6 +338,22 @@
       "tasks": []
     },
     {
+      "name": "CASCADE_ENGINE_SOURCE",
+      "env": "CASCADE_ENGINE_SOURCE",
+      "type": "string",
+      "default": "live",
+      "blank": "live",
+      "scope": "operational",
+      "label": "Cascade Engine Source Mode",
+      "enum": [
+        "live",
+        "freeze",
+        "snapshot"
+      ],
+      "desc": "Code lineage and source mode: 'live' sources gamble-cascade and its submodules (cascade-core, gamble-core) from Git/GitHub; 'freeze' runs live and creates an immutable snapshot under 01_interimmodel/snapshots/<RUN_DATE>; 'snapshot' executes strictly from a frozen snapshot on persistent storage.",
+      "tasks": []
+    },
+    {
       "name": "SWATPLUS_DIR",
       "env": "SWATPLUS_DIR",
       "type": "string",

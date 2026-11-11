@@ -62,9 +62,21 @@ SWATPLUS_DIR     <- get_param('SWATPLUS_DIR', '/mnt/wdrv/ACT4CAP-model-pipeline/
 BIODIVERSITY_DIR <- get_param('BIODIVERSITY_LINK_DIR', 'vendor/Biodiversity_Link')
 BIODIVERSITY_MAPPING_FILE <- get_param('BIODIVERSITY_MAPPING_FILE', 'config/mapping_agmip_to_biodiversity_link.csv')
 POSTMODEL_MODE   <- tolower(get_param('POSTMODEL_MODE', 'full'))
+CASCADE_ENGINE_SOURCE <- tolower(get_param('CASCADE_ENGINE_SOURCE', 'live'))
 
 # Auto-resolve downscaling suite directory
 gamble_dir_resolved <- GAMBLE_DIR
+if (startsWith(CASCADE_ENGINE_SOURCE, "snapshot:")) {
+  snap_id <- sub("^snapshot:", "", CASCADE_ENGINE_SOURCE)
+  snap_candidates <- c(
+    file.path(work_dir_resolved, "01_interimmodel", "snapshots", snap_id),
+    file.path("/mnt/wdrv/ACT4CAP-model-pipeline/01_interimmodel/snapshots", snap_id),
+    file.path("T:/ACT4CAP-model-pipeline/01_interimmodel/snapshots", snap_id)
+  )
+  for (scand in snap_candidates) {
+    if (dir.exists(scand)) { gamble_dir_resolved <- scand; break }
+  }
+}
 if (!dir.exists(gamble_dir_resolved)) {
   for (cand in c(
     'T:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
@@ -359,3 +371,30 @@ cli_h1('Act4Cap Orchestration Execution Completed Successfully')
 cli_alert_success('All {total_jobs} requested job(s) completed across models [{paste(models_to_run, collapse=", ")}] and scenarios [{paste(scenarios_to_run, collapse=", ")}].')
 cli_alert_info('Subprocessing modules executed: SWAT+={fifelse(run_swat_active, "YES", "NO")}, Biodiversity Link={fifelse(run_bio_active, "YES", "NO")}')
 cli_alert_info('Output artifacts written to: {out_path}')
+
+# Freeze option: Archive immutable snapshot of the downscaling suite on cluster storage if requested
+if (CASCADE_ENGINE_SOURCE == "freeze" || get_param("FREEZE", "0") %in% c("1", "true", "TRUE", "yes")) {
+  freeze_tag <- if (nzchar(VERSION_TAG) && VERSION_TAG != "auto") VERSION_TAG else paste0("freeze_", RUN_DATE)
+  snapshot_dir <- file.path(work_dir_resolved, "01_interimmodel", "snapshots", freeze_tag)
+  if (!dir.exists(snapshot_dir)) {
+    cli_h2(sprintf("Freezing Downscaling Suite Snapshot -> %s", freeze_tag))
+    dir.create(snapshot_dir, recursive = TRUE)
+    # Copy gamble-cascade (excluding git objects, cache, and raw large inputs)
+    gamble_files <- list.files(gamble_dir_resolved, full.names = TRUE)
+    gamble_files <- gamble_files[!basename(gamble_files) %in% c(".git", "data", "intermediate", ".Rproj.user")]
+    file.copy(gamble_files, snapshot_dir, recursive = TRUE)
+    # Record freeze metadata
+    freeze_meta <- list(
+      frozen_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ"),
+      source_suite = gamble_dir_resolved,
+      models = models_to_run,
+      scenarios = scenarios_to_run,
+      run_date = RUN_DATE,
+      freeze_tag = freeze_tag
+    )
+    jsonlite::write_json(freeze_meta, file.path(snapshot_dir, "freeze_metadata.json"), pretty = TRUE, auto_unbox = TRUE)
+    cli_alert_success('Archived immutable reproducible snapshot to: {snapshot_dir}')
+  } else {
+    cli_alert_info('Snapshot directory already exists: {snapshot_dir}')
+  }
+}

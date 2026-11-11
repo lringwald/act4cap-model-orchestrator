@@ -19,6 +19,7 @@
   "OUTPUT_DIR": "03_outputs",
   "INPUT_DIR": "00_inputs/macro_models",
   "CASCADING_GAMBLE_DIR": "/app/gamble-cascade",
+  "CASCADE_ENGINE_SOURCE": "live",
   "SWATPLUS_DIR": "/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus",
   "BIODIVERSITY_LINK_DIR": "vendor/Biodiversity_Link",
   "BIODIVERSITY_MAPPING_FILE": "config/mapping_agmip_to_biodiversity_link.csv",

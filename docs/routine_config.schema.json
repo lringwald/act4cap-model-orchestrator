@@ -33,7 +33,7 @@
         "title": "Macro Model Input File / Vintage",
         "description": "Macro Model Input File / Vintage -- Specific macro-economic data vintage to process from the model outputs folder. Select 'latest' to automatically detect the newest date vintage available, or choose a specific vintage from the dropdown menu.",
         "default": "latest",
-        "enum": ["latest", "20260319_MAGNET_AgMIP_accelerator.csv", "20260305_MAGNET_AgMIP.csv", "20260221_MAGNET_AgMIP_accelerator.csv", "20251218_MAGNET_AgMIP_accelerator.csv", "CAPRI_act4cap27_results_20260518.csv", "CAPRI_act4cap27_results_20260415.csv", "CAPRI_act4cap27_results_20260413.csv", "20261021_GLOBIOM_comprehensive.csv", "20260916_compr_scens_merge.csv"]
+        "enum": ["latest", "20261021_GLOBIOM_comprehensive.csv", "20260916_compr_scens_merge.csv", "20260319_MAGNET_AgMIP_accelerator.csv", "20260305_MAGNET_AgMIP.csv", "20260221_MAGNET_AgMIP_accelerator.csv", "20251218_MAGNET_AgMIP_accelerator.csv", "CAPRI_act4cap27_results_20260518.csv", "CAPRI_act4cap27_results_20260415.csv", "CAPRI_act4cap27_results_20260413.csv"]
       },
       "CUSTOM_INPUT_FILE": {
         "type": "string",
@@ -44,9 +44,9 @@
       "DOWNSCALE_OUTPUT": {
         "type": "string",
         "title": "Precomputed Downscaling in Target Folder",
-        "description": "Precomputed Downscaling in Target Folder -- Select an available pre-computed 10km downscaling output from the target folder (03_outputs/downscaling), or 'auto' to automatically match the selected macro model and scenario, or 'none' to force fresh spatial mediation.",
+        "description": "Precomputed Downscaling in Target Folder -- Select an available pre-computed 10km downscaling output from the target folder (01_downscaling), or 'auto' to automatically match the selected macro model and scenario, or 'none' to force fresh spatial mediation.",
         "default": "auto",
-        "enum": ["auto", "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001", "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_TRIAL", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001", "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001", "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001", "none"]
+        "enum": ["auto", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_TRIAL", "DS_ACT4CAP_AgMIP_GLOBIOM_10km_20261001", "DS_ACT4CAP_AgMIP_CAPRI_10km_20261001", "DS_ACT4CAP_AgMIP_MAGNET_10km_20261001", "DS_ACT4CAP_AgMIP_IMAGE_10km_20261001", "DS_ACT4CAP_AgMIP_CLUMONDO_10km_20261001", "none"]
       },
       "POSTMODELS": {
         "type": "string",
@@ -152,7 +152,7 @@
       "WORK_DIR": {
         "type": "string",
         "title": "Persistent Storage Mount (FUSE)",
-        "description": "Persistent Storage Mount (FUSE) -- The unified ACT4CAP-model-pipeline root on the cluster FUSE mount (/mnt/wdrv/ACT4CAP-model-pipeline or W:/ACT4CAP-model-pipeline) housing 00_inputs, 01_interimmodel, 02_postmodels, and 03_outputs.",
+        "description": "Persistent Storage Mount (FUSE) -- The unified ACT4CAP-model-pipeline root on the cluster FUSE mount (/mnt/wdrv/ACT4CAP-model-pipeline or W:/ACT4CAP-model-pipeline) housing 00_inputs, 01_downscaling, 02_postmodels, and 03_outputs.",
         "default": "/mnt/wdrv/ACT4CAP-model-pipeline"
       },
       "OUTPUT_DIR": {
@@ -172,6 +172,17 @@
         "title": "Cascade Spatial Mediator Path",
         "description": "Cascade Spatial Mediator Path -- Filesystem path to the Cascade downscaling suite acting as the necessary spatial mediator between macro models and environmental post-processors (gamble-cascade / cascadinggamble-core).",
         "default": "/app/gamble-cascade"
+      },
+      "CASCADE_ENGINE_SOURCE": {
+        "type": "string",
+        "title": "Cascade Engine Source Mode",
+        "description": "Cascade Engine Source Mode -- Code lineage and source mode: 'live' sources gamble-cascade and its submodules (cascade-core, gamble-core) from Git/GitHub; 'freeze' runs live and creates an immutable snapshot under 01_interimmodel/snapshots/<RUN_DATE>; 'snapshot' executes strictly from a frozen snapshot on persistent storage.",
+        "default": "live",
+        "enum": [
+          "live",
+          "freeze",
+          "snapshot"
+        ]
       },
       "SWATPLUS_DIR": {
         "type": "string",

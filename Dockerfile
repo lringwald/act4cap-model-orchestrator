@@ -25,9 +25,13 @@ COPY . /app
 # Ensure vendor assets are verified
 RUN ls -la /app/vendor/Biodiversity_Link/Input/BII_coefs.RData || echo "Biodiversity Link inputs verified"
 
-# Pre-install cascade-core engine so all downstream scripts can access it natively
+# Clone or verify fresh cascade-core engine and install natively
 RUN if [ -d "/app/vendor/cascade-core" ]; then \
       R CMD INSTALL /app/vendor/cascade-core; \
+    else \
+      git clone --depth 1 https://github.com/lringwald/cascade-core.git /tmp/cascade-core \
+      && R CMD INSTALL /tmp/cascade-core \
+      && rm -rf /tmp/cascade-core; \
     fi
 
 # Ensure executable permissions for unprivileged cluster runner
