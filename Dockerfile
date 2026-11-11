@@ -26,7 +26,9 @@ COPY . /app
 RUN ls -la /app/vendor/Biodiversity_Link/Input/BII_coefs.RData || echo "Biodiversity Link inputs verified"
 
 # Clone or verify fresh cascade-core engine and install natively
-RUN if [ -d "/app/vendor/cascade-core" ]; then \
+RUN if [ -d "/app/vendor/gamble-cascade/external/cascade-core" ]; then \
+      R CMD INSTALL /app/vendor/gamble-cascade/external/cascade-core; \
+    elif [ -d "/app/vendor/cascade-core" ]; then \
       R CMD INSTALL /app/vendor/cascade-core; \
     else \
       git clone --depth 1 https://github.com/lringwald/cascade-core.git /tmp/cascade-core \

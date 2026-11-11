@@ -102,24 +102,41 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
   GAMBLE_TARGET="$WORK_DIR/01_interimmodel/gamble-cascade"
   SNAPSHOT_MODE="${CASCADE_ENGINE_SOURCE:-live}"
   if [ "$SNAPSHOT_MODE" = "live" ] || [ "$SNAPSHOT_MODE" = "freeze" ]; then
-    echo ">>> Refreshing live gamble-cascade and engine submodules (cascade-core, gamble-core) from GitHub into /tmp/gamble-cascade-live..."
+    echo ">>> Provisioning live gamble-cascade and engine submodules (cascade-core, gamble-core) in /tmp/gamble-cascade-live..."
     rm -rf /tmp/gamble-cascade-live 2>/dev/null || true
-    if GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --recursive https://github.com/lringwald/gamble-cascade.git /tmp/gamble-cascade-live; then
-      # Link heavy data directory from the persistent cluster mount into the local container working tree
+    mkdir -p /tmp/gamble-cascade-live
+    if [ -d "/app/vendor/gamble-cascade" ]; then
+      cp -rf /app/vendor/gamble-cascade/. /tmp/gamble-cascade-live/
+      echo ">>> Seeded /tmp/gamble-cascade-live from container image (/app/vendor/gamble-cascade)"
+    fi
+    # Optional non-interactive refresh from GitHub if credentials or public access are available
+    if GIT_TERMINAL_PROMPT=0 GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --recursive https://github.com/lringwald/gamble-cascade.git /tmp/gamble-cascade-git 2>/dev/null; then
+      cp -rf /tmp/gamble-cascade-git/. /tmp/gamble-cascade-live/
+      rm -rf /tmp/gamble-cascade-git
+      echo ">>> Refreshed /tmp/gamble-cascade-live from live GitHub repository"
+    fi
+    if [ -f "/tmp/gamble-cascade-live/pipelines/AGMIP/run_downscaling.R" ]; then
+      mkdir -p /tmp/gamble-cascade-live/data/intermediate
       if [ -d "$GAMBLE_TARGET/data" ]; then
         for d_sub in "$GAMBLE_TARGET/data"/*; do
           [ -e "$d_sub" ] || continue
           b_sub="$(basename "$d_sub")"
-          rm -rf "/tmp/gamble-cascade-live/data/$b_sub" 2>/dev/null || true
-          ln -s "$d_sub" "/tmp/gamble-cascade-live/data/$b_sub"
+          if [ "$b_sub" = "intermediate" ]; then
+            # Symlink existing cached .rds/.qs files into local writable /tmp/gamble-cascade-live/data/intermediate
+            for f_int in "$d_sub"/*; do
+              [ -e "$f_int" ] || continue
+              ln -sf "$f_int" "/tmp/gamble-cascade-live/data/intermediate/$(basename "$f_int")" 2>/dev/null || true
+            done
+          else
+            rm -rf "/tmp/gamble-cascade-live/data/$b_sub" 2>/dev/null || true
+            ln -s "$d_sub" "/tmp/gamble-cascade-live/data/$b_sub"
+          fi
         done
       fi
-      # Also best-effort sync lightweight R scripts back to the cluster mount (using -f to unlink before writing on FUSE)
-      cp -rf /tmp/gamble-cascade-live/pipelines /tmp/gamble-cascade-live/scripts /tmp/gamble-cascade-live/external "$GAMBLE_TARGET/" 2>/dev/null || true
       export CASCADING_GAMBLE_DIR="/tmp/gamble-cascade-live"
-      echo ">>> Activated live gamble-cascade in /tmp/gamble-cascade-live (linked data from $GAMBLE_TARGET/data)"
+      echo ">>> Activated gamble-cascade in /tmp/gamble-cascade-live (linked data from $GAMBLE_TARGET/data)"
     else
-      echo ">>> WARNING: Live git clone failed; falling back to existing $GAMBLE_TARGET"
+      echo ">>> WARNING: Could not provision /tmp/gamble-cascade-live; falling back to existing $GAMBLE_TARGET"
     fi
   elif [[ "$SNAPSHOT_MODE" == snapshot:* ]]; then
     SNAP_NAME="${SNAPSHOT_MODE#snapshot:}"
