@@ -9,9 +9,11 @@ if (file.exists("scripts/core/gravity_allocator.R")) {
 
 
 # =========================================================================
-# Platform detection: Accelerator (DeepOrigin / Celery) jobs provide PROJECT_SLUG
+# Platform detection: Accelerator (DeepOrigin / Celery / WKUBE) jobs or FUSE mounts
 # =========================================================================
-is_accelerator <- function() nzchar(Sys.getenv("PROJECT_SLUG", ""))
+is_accelerator <- function() {
+  nzchar(Sys.getenv("PROJECT_SLUG", "")) || dir.exists("/mnt/wdrv") || .Platform$OS.type == "unix"
+}
 
 get_latest_file_aux <- function(files) {
   if (length(files) == 0) return(NULL)
@@ -728,7 +730,7 @@ read_output_table <- function(path_or_prefix, ...) {
   if (file.exists(path_or_prefix)) {
     if (grepl("\\.parquet$", path_or_prefix, ignore.case = TRUE)) {
       return(tryCatch(
-        data.table::as.data.table(arrow::read_parquet(path_or_prefix, ...)),
+        data.table::as.data.table(arrow::read_parquet(path_or_prefix, memory_map = FALSE, ...)),
         error = function(e) data.table::fread(path_or_prefix, ...)
       ))
     } else {
@@ -740,7 +742,7 @@ read_output_table <- function(path_or_prefix, ...) {
   csv_cand <- paste0(path_or_prefix, ".csv")
   if (file.exists(pq_cand)) {
     return(tryCatch(
-      data.table::as.data.table(arrow::read_parquet(pq_cand, ...)),
+      data.table::as.data.table(arrow::read_parquet(pq_cand, memory_map = FALSE, ...)),
       error = function(e) data.table::fread(pq_cand, ...)
     ))
   } else if (file.exists(csv_cand)) {

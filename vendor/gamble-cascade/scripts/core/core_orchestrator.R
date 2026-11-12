@@ -311,7 +311,7 @@ if (file.exists(mapping_grid_path_parquet)) {
   message(">>> Loading master grid mapping from Parquet (memory-efficient)...")
   require(arrow)
   if (!exists("is_accelerator", mode = "function")) {
-    is_accelerator <- function() nzchar(Sys.getenv("PROJECT_SLUG", ""))
+    is_accelerator <- function() nzchar(Sys.getenv("PROJECT_SLUG", "")) || dir.exists("/mnt/wdrv") || .Platform$OS.type == "unix"
   }
   # Determine available columns in parquet file to intersect with keep_cols
   pq_cols <- arrow::open_dataset(mapping_grid_path_parquet)$schema$names
@@ -319,7 +319,7 @@ if (file.exists(mapping_grid_path_parquet)) {
   mapping_grid <- as.data.table(arrow::read_parquet(
     mapping_grid_path_parquet,
     col_select = all_of(load_cols),
-    memory_map = if (is_accelerator()) FALSE else TRUE
+    memory_map = FALSE
   ))
 } else if (file.exists(mapping_grid_path_rds)) {
   message(">>> Loading master grid mapping from RDS...")
@@ -590,7 +590,7 @@ if (RUN_DS_LU || RUN_DS_LSU || (exists("RUN_DS_ECONOMICS") && RUN_DS_ECONOMICS))
       mg_mask <- arrow::read_parquet(
         mapping_grid_path_parquet,
         col_select = tidyselect::any_of(c(base_id_col, "GLOB_country", "NUTS0", "CAPRI_NUTS", x_col, y_col)),
-        memory_map = if (exists("is_accelerator", mode = "function") && is_accelerator()) FALSE else TRUE
+        memory_map = FALSE
       )
       
       mg_coords <- data.frame(

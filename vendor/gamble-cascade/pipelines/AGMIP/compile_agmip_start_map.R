@@ -102,7 +102,7 @@ if (!"mapping_grid" %in% names(mappings)) {
   if (is.null(grid_file)) stop("No master mapping files found in data/aux_files.")
 
   if (grepl("\\.parquet$", grid_file, ignore.case = TRUE)) {
-    mappings$mapping_grid <- arrow::read_parquet(grid_file)
+    mappings$mapping_grid <- arrow::read_parquet(grid_file, memory_map = FALSE)
   } else {
     mappings$mapping_grid <- readRDS(grid_file)
   }

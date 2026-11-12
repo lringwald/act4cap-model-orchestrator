@@ -106,7 +106,7 @@ adapt_mapping_grid <- function(cfg, mappings, mapping_grid_path, countries_to_ru
       require(arrow)
       mapping_grid <- as.data.table(arrow::read_parquet(
         mapping_grid_path,
-        memory_map = if (nzchar(Sys.getenv("PROJECT_SLUG", ""))) FALSE else TRUE
+        memory_map = FALSE
       ))
     } else {
       mapping_grid <- readRDS(mapping_grid_path)
@@ -569,7 +569,7 @@ run_restriction_compliance_check <- function(restrictions, files, scen_col) {
     return(invisible(NULL))
   }
   if (!exists("check_restriction_compliance")) source("scripts/core/aux_codes/check_restriction_compliance.R")
-  luc <- if (grepl("\\.parquet$", files$luc_output)) as.data.table(arrow::read_parquet(files$luc_output)) else fread(files$luc_output)
+  luc <- if (grepl("\\.parquet$", files$luc_output)) as.data.table(arrow::read_parquet(files$luc_output, memory_map = FALSE)) else fread(files$luc_output)
   sc <- if (!is.null(scen_col) && scen_col %in% names(luc)) scen_col else "scenario"
   res <- check_restriction_compliance(luc, restrictions, scen_col = sc)
   out <- if (!is.null(files$restriction_check_output)) files$restriction_check_output else

@@ -215,7 +215,7 @@ write_cell_tabular_data <- function(dt, parquet_path) {
 read_cell_tabular_data <- function(file_path, nrows = Inf) {
   if (grepl("\\.parquet$", file_path, ignore.case = TRUE)) {
     if (requireNamespace("arrow", quietly = TRUE)) {
-      dt <- data.table::as.data.table(arrow::read_parquet(file_path))
+      dt <- data.table::as.data.table(arrow::read_parquet(file_path, memory_map = FALSE))
       if (is.finite(nrows) && nrows < nrow(dt)) dt <- dt[seq_len(nrows)]
       return(dt)
     }

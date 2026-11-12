@@ -218,7 +218,8 @@ job_grid <- expand.grid(
   stringsAsFactors = FALSE
 )
 total_jobs <- nrow(job_grid)
-n_workers <- min(NCORES, total_jobs)
+parallel_models <- tolower(get_param("PARALLEL_MODELS", "0")) %in% c("1", "true", "yes")
+n_workers <- if (parallel_models) min(NCORES, total_jobs) else 1L
 inner_cores <- max(1L, floor(NCORES / n_workers))
 
 cli_alert_info('Job Grid:          {total_jobs} total job(s) ({length(models_to_run)} model(s) x {length(scenarios_to_run)} scenario(s))')

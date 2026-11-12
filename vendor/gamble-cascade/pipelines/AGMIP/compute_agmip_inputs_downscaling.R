@@ -108,7 +108,7 @@ run_agmip_inputs_downscaling <- function() {
   }
 
   cli_alert_info("Loading downscaled cropland from: {basename(lu_file)}")
-  lu_dt <- if (grepl("\\.parquet$", lu_file, ignore.case = TRUE)) as.data.table(arrow::read_parquet(lu_file)) else fread(lu_file)
+  lu_dt <- if (grepl("\\.parquet$", lu_file, ignore.case = TRUE)) as.data.table(arrow::read_parquet(lu_file, memory_map = FALSE)) else fread(lu_file)
   
   # Normalize column names
   for (col in c("times", "year", "time")) {
@@ -541,7 +541,7 @@ run_agmip_inputs_downscaling <- function() {
   } else {
     mg_pq <- list.files("data/aux_files/", pattern = "one_kmID_master_mapping_.*\\.parquet", full.names = TRUE)
     if (length(mg_pq) > 0) {
-      mg <- as.data.table(arrow::read_parquet(sort(mg_pq, decreasing = TRUE)[1], col_select = c("EEA_10kmID", "x_10kmID", "y_10kmID")))
+      mg <- as.data.table(arrow::read_parquet(sort(mg_pq, decreasing = TRUE)[1], col_select = c("EEA_10kmID", "x_10kmID", "y_10kmID"), memory_map = FALSE))
       mg_u <- unique(mg, by = "EEA_10kmID")
       template_rst <- terra::rast(data.frame(x = mg_u$x_10kmID, y = mg_u$y_10kmID, z = mg_u$EEA_10kmID), type = "xyz")
       names(template_rst) <- "EEA_10kmID"

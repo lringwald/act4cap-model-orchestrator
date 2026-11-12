@@ -46,7 +46,7 @@ load_master_grid_10km_lookup <- function(gamble_dir = NULL) {
     return(NULL)
   }
   
-  mg <- as.data.table(arrow::read_parquet(latest_pq, col_select = c('EEA_10kmID', 'x_10kmID', 'y_10kmID')))
+  mg <- as.data.table(arrow::read_parquet(latest_pq, col_select = c('EEA_10kmID', 'x_10kmID', 'y_10kmID'), memory_map = FALSE))
   mg_u <- unique(mg, by = 'EEA_10kmID')
   setorder(mg_u, x_10kmID, y_10kmID)
   

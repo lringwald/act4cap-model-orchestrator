@@ -232,6 +232,25 @@ run_act4cap_swat_postprocess <- function(model,
     cli_alert_success('Verified downscaled input GeoTIFF root for {toupper(model)}: {swat_input_root}')
   }
 
+  # Create an isolated per-run input root in /tmp so SWAT+ 1_merged_script.py
+  # only sees the exact downscaled folder for this run (avoiding stale dates or output folders)
+  if (!is.null(downscale_outputs$out_folder) && dir.exists(downscale_outputs$out_folder)) {
+    isolated_swat_root <- file.path(tempdir(), paste0("swat_input_", tolower(model), "_", tolower(scenario)))
+    unlink(isolated_swat_root, recursive = TRUE, force = TRUE)
+    dir.create(isolated_swat_root, recursive = TRUE, showWarnings = FALSE)
+    target_sub <- file.path(isolated_swat_root, basename(downscale_outputs$out_folder))
+    linked <- tryCatch(file.symlink(downscale_outputs$out_folder, target_sub), warning = function(w) FALSE, error = function(e) FALSE)
+    if (!isTRUE(linked) || !dir.exists(target_sub)) {
+      dir.create(target_sub, recursive = TRUE, showWarnings = FALSE)
+      tif_files <- list.files(downscale_outputs$out_folder, pattern = "\\.tiff?$", full.names = TRUE, ignore.case = TRUE)
+      if (length(tif_files) > 0) file.copy(tif_files, target_sub, overwrite = TRUE)
+    }
+    if (dir.exists(target_sub) && length(list.files(target_sub, pattern = "\\.tiff?$", ignore.case = TRUE)) > 0) {
+      swat_input_root <- isolated_swat_root
+      cli_alert_info('Isolated SWAT+ input root to current run folder: {basename(downscale_outputs$out_folder)}')
+    }
+  }
+
   Sys.setenv(ACT4CAP_INPUT_ROOT       = swat_input_root)
   Sys.setenv(ACT4CAP_ROOT             = swat_out_dir)
   Sys.setenv(ACT4CAP_SWAT_DIR         = swat_dir)

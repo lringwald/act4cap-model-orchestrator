@@ -34,7 +34,7 @@ if (exists("mappings") && !is.null(mappings$mapping_grid)) {
     message(">>> Loading mapping grid from parquet...")
     mapping_grid <- as.data.table(arrow::read_parquet(
       mapping_grid_path_parquet,
-      memory_map = if (nzchar(Sys.getenv("PROJECT_SLUG", ""))) FALSE else TRUE
+      memory_map = FALSE
     ))
   } else if (file.exists(mapping_grid_path_rds)) {
     message(">>> Loading mapping grid from rds...")
