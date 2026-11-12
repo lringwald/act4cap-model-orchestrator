@@ -104,11 +104,21 @@
       "RESOLUTION": {
         "type": "string",
         "title": "Grid Spatial Resolution",
-        "description": "Grid Spatial Resolution -- Target grid resolution for downscaling and subsequent impact assessment. Standard Act4Cap grid is 10km (EEA EPSG:3035).",
+        "description": "Grid Spatial Resolution -- Target grid resolution for downscaling and subsequent impact assessment (1km, 2km, 3km, 4km, 5km, 10km, 20km, 30km, 40km, 50km, 100km, or 200km EEA EPSG:3035 grid). Standard Act4Cap grid is 10km.",
         "default": "10km",
         "enum": [
           "10km",
-          "1km"
+          "1km",
+          "2km",
+          "3km",
+          "4km",
+          "5km",
+          "20km",
+          "30km",
+          "40km",
+          "50km",
+          "100km",
+          "200km"
         ]
       },
       "NCORES": {

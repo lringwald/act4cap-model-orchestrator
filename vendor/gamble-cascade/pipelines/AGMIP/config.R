@@ -67,7 +67,10 @@ current_model_cfg <- list(
   # =========================================================================
   # 4. Resolution Settings
   # =========================================================================
-  pixel_res              = if (nzchar(Sys.getenv("RESOLUTION", "")) && grepl("1km", Sys.getenv("RESOLUTION"), ignore.case = TRUE)) 1 else 10,
+  pixel_res              = if (nzchar(Sys.getenv("RESOLUTION", ""))) {
+                             res_num <- suppressWarnings(as.integer(gsub("[^0-9]", "", Sys.getenv("RESOLUTION"))))
+                             if (!is.na(res_num) && res_num %in% c(1L, 2L, 3L, 4L, 5L, 10L, 20L, 30L, 40L, 50L, 100L, 200L)) res_num else 10L
+                           } else 10L,
   pixel_intersect_col    = NULL,
   macro_model_resolution = "Ns_reg",
 

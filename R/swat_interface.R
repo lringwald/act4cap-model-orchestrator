@@ -447,7 +447,8 @@ run_act4cap_swat_postprocess <- function(model,
         cell_dt = cell_swat,
         indicator_cols = c('n_leach_kg_ha', 'p_runoff_kg_ha', 'sediment_t_ha', 'water_yield_mm'),
         out_dir = swat_out_dir,
-        prefix = raster_prefix
+        prefix = raster_prefix,
+        resolution = resolution
       ),
       error = function(e) {
         cli_alert_warning('GeoTIFF raster export skipped: {e$message}')

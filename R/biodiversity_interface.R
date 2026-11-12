@@ -346,7 +346,8 @@ run_act4cap_biodiversity_postprocess <- function(model,
         cell_dt = cell_bio,
         indicator_cols = c('bii_score', 'csar_intactness', 'committed_extinctions'),
         out_dir = bio_out_dir,
-        prefix = raster_prefix
+        prefix = raster_prefix,
+        resolution = resolution
       ),
       error = function(e) {
         cli_alert_warning('GeoTIFF raster export skipped: {e$message}')
