@@ -26,9 +26,15 @@ if (exists("mappings") && !is.null(mappings$mapping_grid)) {
   message(">>> Using existing mapping_grid from pipeline...")
   mapping_grid <- copy(mappings$mapping_grid)
 } else {
-  # Look for the parquet file first, fallback to rds
-  mapping_grid_path_parquet <- file.path(paths$gridwork_dir, "one_kmID_master_mapping_2026-05-28.parquet")
-  mapping_grid_path_rds     <- file.path(paths$gridwork_dir, "one_kmID_master_mapping_2026-05-28.rds")
+  # Look for the latest parquet file first, fallback to rds
+  mapping_files_pq <- list.files(paths$gridwork_dir, pattern = "one_kmID_master_mapping_.*\\.parquet", full.names = TRUE)
+  if (length(mapping_files_pq) > 0) {
+    mapping_grid_path_parquet <- sort(mapping_files_pq, decreasing = TRUE)[1]
+    mapping_grid_path_rds     <- sub("\\.parquet$", ".rds", mapping_grid_path_parquet)
+  } else {
+    mapping_grid_path_parquet <- file.path(paths$gridwork_dir, "one_kmID_master_mapping_2026-08-12.parquet")
+    mapping_grid_path_rds     <- file.path(paths$gridwork_dir, "one_kmID_master_mapping_2026-08-12.rds")
+  }
   
   if (file.exists(mapping_grid_path_parquet)) {
     message(">>> Loading mapping grid from parquet...")

@@ -283,8 +283,8 @@ if(length(mapping_files_pq) > 0) {
   mapping_grid_path_parquet <- sort(mapping_files_pq, decreasing = TRUE)[1]
   mapping_grid_path_rds     <- sub("\\.parquet$", ".rds", mapping_grid_path_parquet)
 } else {
-  mapping_grid_path_parquet <- file.path(paths$gridwork_dir, "one_kmID_master_mapping_2026-05-28.parquet")
-  mapping_grid_path_rds     <- file.path(paths$gridwork_dir, "one_kmID_master_mapping_2026-05-28.rds")
+  mapping_grid_path_parquet <- file.path(paths$gridwork_dir, "one_kmID_master_mapping_2026-08-12.parquet")
+  mapping_grid_path_rds     <- file.path(paths$gridwork_dir, "one_kmID_master_mapping_2026-08-12.rds")
 }
 mapping_grid_path <- if (file.exists(mapping_grid_path_parquet)) mapping_grid_path_parquet else mapping_grid_path_rds
 

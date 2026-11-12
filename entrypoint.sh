@@ -179,6 +179,23 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
     [ -d "$WORK_DIR/01_interimmodel/gamble-cascade/P:" ] && rm -rf "$WORK_DIR/01_interimmodel/gamble-cascade/P:" 2>/dev/null || true
     [ -d "$WORK_DIR/P:" ] && rm -rf "$WORK_DIR/P:" 2>/dev/null || true
     [ -d "$WORK_DIR/02_postmodels/swatplus/default_hru_shp" ] && rm -rf "$WORK_DIR/02_postmodels/swatplus/default_hru_shp" 2>/dev/null || true
+
+    # Prune superseded one_kmID_master_mapping_* files on the accelerator drive, keeping only the latest parquet
+    for aux_dir in "$WORK_DIR/01_interimmodel/gamble-cascade/data/aux_files" \
+                   "$WORK_DIR/01_inputs/gamble-cascade-data/data/downscaling/auxiliary"; do
+      if [ -d "$aux_dir" ]; then
+        latest_pq="$(ls -1 "$aux_dir"/one_kmID_master_mapping_*.parquet 2>/dev/null | sort | tail -n 1 || true)"
+        if [ -n "$latest_pq" ] && [ -f "$latest_pq" ]; then
+          for mf in "$aux_dir"/one_kmID_master_mapping_*; do
+            [ -e "$mf" ] || continue
+            if [ "$mf" != "$latest_pq" ]; then
+              rm -f "$mf" 2>/dev/null || true
+              echo ">>> Removed superseded mapping file: $mf (active: $(basename "$latest_pq"))"
+            fi
+          done
+        fi
+      fi
+    done
   fi
 
   chmod -R a+rwX "$WORK_DIR/$OUTPUT_DIR" "$WORK_DIR/02_postmodels" 2>/dev/null || true

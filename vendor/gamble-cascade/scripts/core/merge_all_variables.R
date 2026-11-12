@@ -6,7 +6,8 @@ library(arrow)
 library(FNN)
 
 # Paths
-mapping_file <- "data/aux_files/one_kmID_master_mapping_2026-04-29.parquet"
+mapping_cands <- sort(list.files("data/aux_files", pattern = "one_kmID_master_mapping_.*\\.parquet$", full.names = TRUE), decreasing = TRUE)
+mapping_file <- if (length(mapping_cands) > 0) mapping_cands[1] else "data/aux_files/one_kmID_master_mapping_2026-08-12.parquet"
 esdac_dir <- "data/02_intermediate/ESDAC"
 ee_dir <- "data/02_intermediate/EE_aggregated"
 output_file <- "data/02_intermediate/prior_model_1km_master_inputs"

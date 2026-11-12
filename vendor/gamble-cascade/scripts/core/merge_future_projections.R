@@ -11,7 +11,8 @@ library(data.table)
 cat("Starting Future Projections Merge...\n")
 cat("--------------------------------------------------\n")
 
-master_file <- "data/aux_files/one_kmID_master_mapping_2026-04-29.parquet"
+master_cands <- sort(list.files("data/aux_files", pattern = "one_kmID_master_mapping_.*\\.parquet$", full.names = TRUE), decreasing = TRUE)
+master_file <- if (length(master_cands) > 0) master_cands[1] else "data/aux_files/one_kmID_master_mapping_2026-08-12.parquet"
 future_dir <- "data/02_intermediate/future_projections"
 output_parquet <- "data/02_intermediate/prior_model_1km_future_inputs.parquet"
 output_csv <- file.path(future_dir, "future_data_dictionary.csv")
