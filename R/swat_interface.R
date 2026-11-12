@@ -251,8 +251,15 @@ run_act4cap_swat_postprocess <- function(model,
     }
   }
 
+  # Stage SWAT+ working directory (ACT4CAP_ROOT) on local container SSD (/tmp)
+  # to avoid copying thousands of small TxtInOut files over the FUSE mount in Step 2,
+  # then copy only the resulting scenario_files / management_tables / outputs back to swat_out_dir
+  swat_work_root <- file.path(tempdir(), paste0("swat_work_", tolower(model), "_", tolower(scenario)))
+  unlink(swat_work_root, recursive = TRUE, force = TRUE)
+  dir.create(swat_work_root, recursive = TRUE, showWarnings = FALSE)
+
   Sys.setenv(ACT4CAP_INPUT_ROOT       = swat_input_root)
-  Sys.setenv(ACT4CAP_ROOT             = swat_out_dir)
+  Sys.setenv(ACT4CAP_ROOT             = swat_work_root)
   Sys.setenv(ACT4CAP_SWAT_DIR         = swat_dir)
   Sys.setenv(ACT4CAP_DEFAULTS_DIR     = defaults_dir)
   Sys.setenv(ACT4CAP_MODEL            = toupper(model))
@@ -301,14 +308,42 @@ run_act4cap_swat_postprocess <- function(model,
   }
 
   # 4. Ingest Authentic SWAT+ Hydrological & Nutrient Simulation Tables
-  # Source of Truth: model-specific prepared TxtInOut under swat_out_dir
+  # Sync prepared SWAT+ scenario/management files (excluding redundant 10k-file template TxtInOut) to persistent swat_out_dir
   model_ds_folder <- if (!is.null(downscale_outputs$out_folder)) basename(downscale_outputs$out_folder) else ""
   swat_scen_folder <- if (tolower(scenario) %in% c("base", "baseline")) "climate_baseline_landuse_baseline" else paste0("climate_baseline_landuse_", tolower(scenario))
+  work_model_dir <- file.path(swat_work_root, swat_scen_folder, model_ds_folder)
+  pers_model_dir <- file.path(swat_out_dir, swat_scen_folder, model_ds_folder)
+  if (dir.exists(work_model_dir)) {
+    dir.create(pers_model_dir, recursive = TRUE, showWarnings = FALSE)
+    for (sub_d in c("landuse_input", "Nfertilizer_input", "scenario_files", "management_tables")) {
+      src_sub <- file.path(work_model_dir, sub_d)
+      if (dir.exists(src_sub)) {
+        file.copy(src_sub, pers_model_dir, recursive = TRUE, overwrite = TRUE)
+      }
+    }
+    # Copy modified files in TxtInOut (time.sim, _act4cap_prepared.txt, mgt tables, and any simulation outputs)
+    src_txt <- file.path(work_model_dir, "TxtInOut")
+    dst_txt <- file.path(pers_model_dir, "TxtInOut")
+    if (dir.exists(src_txt)) {
+      dir.create(dst_txt, recursive = TRUE, showWarnings = FALSE)
+      txt_keep <- unique(c(
+        list.files(src_txt, pattern = "\\.(csv|log|sim|dtl|sch|hru|lum|ini|con|out)$|^_act4cap_", full.names = TRUE, ignore.case = TRUE),
+        list.files(file.path(work_model_dir, "management_tables"), full.names = TRUE)
+      ))
+      txt_keep <- txt_keep[file.exists(txt_keep)]
+      if (length(txt_keep) > 0) file.copy(txt_keep, dst_txt, overwrite = TRUE)
+    }
+  }
+
+  # Source of Truth: model-specific prepared TxtInOut under swat_work_root or swat_out_dir or defaults_dir
   cand_txtinouts <- c(
+    if (nzchar(model_ds_folder)) file.path(swat_work_root, swat_scen_folder, model_ds_folder, "TxtInOut") else character(0),
+    Sys.glob(file.path(swat_work_root, swat_scen_folder, paste0("*", toupper(model), "*"), "TxtInOut")),
     if (nzchar(model_ds_folder)) file.path(swat_out_dir, swat_scen_folder, model_ds_folder, "TxtInOut") else character(0),
     Sys.glob(file.path(swat_out_dir, swat_scen_folder, paste0("*", toupper(model), "*"), "TxtInOut")),
     Sys.glob(file.path(swat_out_dir, "*", paste0("*", toupper(model), "*"), "TxtInOut")),
-    file.path(swat_out_dir, "TxtInOut")
+    file.path(swat_out_dir, "TxtInOut"),
+    txtinout_dir
   )
   cand_txtinouts <- unique(cand_txtinouts[dir.exists(cand_txtinouts)])
   if (length(cand_txtinouts) == 0) {
