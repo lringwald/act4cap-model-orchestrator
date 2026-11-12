@@ -226,7 +226,15 @@ models_found <- sort(unique(dt_finest_all$model))
 data_dir <- "data"
 if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
 
-outputs_dir <- "P:/globiom/Projects/DS_AgMIP/DS_results/outputs"
+outputs_dir <- if (nzchar(Sys.getenv("AGMIP_OUTPUT_DIR", ""))) {
+  Sys.getenv("AGMIP_OUTPUT_DIR")
+} else if (dir.exists("/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling")) {
+  "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling"
+} else if (.Platform$OS.type == "windows" && dir.exists("P:/globiom/Projects/DS_AgMIP/DS_results/outputs")) {
+  "P:/globiom/Projects/DS_AgMIP/DS_results/outputs"
+} else {
+  "data/outputs"
+}
 if (!dir.exists(outputs_dir)) dir.create(outputs_dir, recursive = TRUE)
 
 for (m in models_found) {

@@ -175,6 +175,9 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
         mv "$arch_dir" "$WORK_DIR/99_archive/" 2>/dev/null || rm -rf "$arch_dir" 2>/dev/null || true
       fi
     done
+    # Remove any accidental literal Windows drive-letter directories (e.g. P:) created on Linux mounts
+    [ -d "$WORK_DIR/01_interimmodel/gamble-cascade/P:" ] && rm -rf "$WORK_DIR/01_interimmodel/gamble-cascade/P:" 2>/dev/null || true
+    [ -d "$WORK_DIR/P:" ] && rm -rf "$WORK_DIR/P:" 2>/dev/null || true
     [ -d "$WORK_DIR/02_postmodels/swatplus/default_hru_shp" ] && rm -rf "$WORK_DIR/02_postmodels/swatplus/default_hru_shp" 2>/dev/null || true
   fi
 

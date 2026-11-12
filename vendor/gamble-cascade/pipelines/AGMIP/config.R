@@ -5,12 +5,14 @@ current_model_cfg <- list(
   project_model    = "ACT4CAP_AgMIP",
   input_dir        = if (nzchar(Sys.getenv("AGMIP_INPUT_DIR", "")) && dir.exists(Sys.getenv("AGMIP_INPUT_DIR"))) Sys.getenv("AGMIP_INPUT_DIR")
                      else if (nzchar(Sys.getenv("INPUT_DIR", "")) && dir.exists(Sys.getenv("INPUT_DIR"))) Sys.getenv("INPUT_DIR")
-                     else if (dir.exists("P:/globiom/Projects/DS_AgMIP/AgMIP_output/")) "P:/globiom/Projects/DS_AgMIP/AgMIP_output/"
+                     else if (dir.exists("/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models")) "/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models"
+                     else if (.Platform$OS.type == "windows" && dir.exists("P:/globiom/Projects/DS_AgMIP/AgMIP_output/")) "P:/globiom/Projects/DS_AgMIP/AgMIP_output/"
                      else if (dir.exists("/mnt/pdrv/globiom/Projects/DS_AgMIP/AgMIP_output/")) "/mnt/pdrv/globiom/Projects/DS_AgMIP/AgMIP_output/"
                      else "data/macro_models",
   output_dir       = if (nzchar(Sys.getenv("AGMIP_OUTPUT_DIR", ""))) Sys.getenv("AGMIP_OUTPUT_DIR")
                      else if (nzchar(Sys.getenv("OUTPUT_DIR", ""))) Sys.getenv("OUTPUT_DIR")
-                     else if (dir.exists("P:/globiom/Projects/DS_AgMIP/DS_results/outputs")) "P:/globiom/Projects/DS_AgMIP/DS_results/outputs"
+                     else if (dir.exists("/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling")) "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling"
+                     else if (.Platform$OS.type == "windows" && dir.exists("P:/globiom/Projects/DS_AgMIP/DS_results/outputs")) "P:/globiom/Projects/DS_AgMIP/DS_results/outputs"
                      else "data/outputs",
   temp_dir         = if (nzchar(Sys.getenv("AGMIP_TEMP_DIR", ""))) Sys.getenv("AGMIP_TEMP_DIR")
                      else if (nzchar(Sys.getenv("TEMP_DIR", ""))) Sys.getenv("TEMP_DIR")

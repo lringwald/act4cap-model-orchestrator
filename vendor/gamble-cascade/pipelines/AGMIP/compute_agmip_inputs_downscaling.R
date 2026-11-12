@@ -48,8 +48,8 @@ if (!exists("run_basename")) run_basename <- paste0("AgMIP_", toupper(current_mo
 if (!exists("RUN_DATE")) RUN_DATE <- format(Sys.Date(), "%Y%m%d")
 if (!exists("paths")) {
   paths <- list(
-    temp = if (!is.null(current_model_cfg$temp_dir)) current_model_cfg$temp_dir else "P:/globiom/Projects/DS_AgMIP/DS_results/temp/",
-    output_dir = if (!is.null(current_model_cfg$output_dir)) current_model_cfg$output_dir else "P:/globiom/Projects/DS_AgMIP/DS_results/outputs",
+    temp = if (!is.null(current_model_cfg$temp_dir)) current_model_cfg$temp_dir else "data/intermediate",
+    output_dir = if (!is.null(current_model_cfg$output_dir)) current_model_cfg$output_dir else "data/outputs",
     gridwork_dir = "data/aux_files/"
   )
 }
@@ -62,7 +62,7 @@ run_agmip_inputs_downscaling <- function() {
   # ---------------------------------------------------------------
   scen_name <- if (exists("safe_scen_chunk")) safe_scen_chunk else if (exists("scen_chunk")) scen_chunk else "base"
   prefix <- if (exists("output_prefix")) output_prefix else paste0("DS_AgMIP_", toupper(current_model_cfg$agmip_model_name), "_10km_", format(Sys.Date(), "%Y%m%d"))
-  base_out <- if (exists("paths") && !is.null(paths$output_dir)) paths$output_dir else "P:/globiom/Projects/DS_AgMIP/DS_results/outputs"
+  base_out <- if (exists("paths") && !is.null(paths$output_dir)) paths$output_dir else if (!is.null(current_model_cfg$output_dir)) current_model_cfg$output_dir else "data/outputs"
   out_dir <- if (grepl(prefix, base_out)) base_out else file.path(base_out, prefix)
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 

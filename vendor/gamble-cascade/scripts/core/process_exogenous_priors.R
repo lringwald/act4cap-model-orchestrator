@@ -17,7 +17,7 @@ if (!exists("PIXEL_INTERSECT_COL")) PIXEL_INTERSECT_COL <- "NUTS3"
 if (!exists("paths")) {
   paths <- list(
     gridwork_dir = "data/aux_files/",
-    temp = "P:/globiom/Projects/LAMASUS/DS_results/temp/"
+    temp = if (.Platform$OS.type == "windows" && dir.exists("P:/globiom/Projects/LAMASUS/DS_results/temp/")) "P:/globiom/Projects/LAMASUS/DS_results/temp/" else "data/intermediate/"
   )
 }
 
