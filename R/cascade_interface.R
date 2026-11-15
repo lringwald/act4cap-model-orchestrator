@@ -157,8 +157,8 @@ ensure_downscale_parquet <- function(lu_file, model, scenario, out_dir) {
     tryCatch(Sys.chmod(companion_parquet, mode = "0666", use_umask = FALSE), error = function(e) NULL)
     companion_parquet
   }, error = function(e) {
-    # If source folder is read-only, write into out_dir/downscaling/
-    local_dir <- file.path(out_dir, sprintf('%s_%s', tolower(model), tolower(scenario)), 'downscaling')
+    # If source folder is read-only, write into out_dir/gamble-cascade/
+    local_dir <- file.path(out_dir, sprintf('%s_%s', tolower(model), tolower(scenario)), 'gamble-cascade')
     if (!dir.exists(local_dir)) dir.create(local_dir, recursive = TRUE)
     local_parquet <- file.path(local_dir, basename(companion_parquet))
     tryCatch({
@@ -178,10 +178,14 @@ ensure_downscale_parquet <- function(lu_file, model, scenario, out_dir) {
   return(upgraded)
 }
 
-locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, downscale_output = "auto") {
+locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, downscale_output = "auto", job_dir = NULL) {
   # 1. If explicit downscale_output folder or file was selected from target folder dropdown
   if (!is.null(downscale_output) && nzchar(downscale_output) && downscale_output != "auto" && downscale_output != "none") {
     target_cands <- c(
+      if (!is.null(job_dir)) file.path(job_dir, "gamble-cascade", downscale_output) else NULL,
+      if (!is.null(job_dir)) file.path(job_dir, downscale_output) else NULL,
+      file.path(out_dir, downscale_output, "gamble-cascade"),
+      file.path(out_dir, "gamble-cascade", downscale_output),
       file.path("T:/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
       file.path("W:/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
       file.path("/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
@@ -189,6 +193,7 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
       file.path(out_dir, downscale_output),
       downscale_output
     )
+    target_cands <- unique(target_cands[!is.null(target_cands)])
     for (tc in target_cands) {
       if (dir.exists(tc)) {
         found <- list.files(tc, pattern = sprintf('.*lu_%s\\.(parquet|csv)$', tolower(scenario)), full.names = TRUE)
@@ -238,25 +243,36 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
     ))
   }
 
-  # 2. Look in 03_outputs/downscaling and out_dir (.parquet or .csv)
+  # 2. Look in <job_dir>/gamble-cascade first, then out_dir and legacy downscaling folders (.parquet or .csv)
   pat <- sprintf('DS_.*AgMIP_%s_.*_lu.*\\.(parquet|csv)$', toupper(model))
-  search_roots <- c(
-    "T:/ACT4CAP-model-pipeline/03_outputs/downscaling",
-    "W:/ACT4CAP-model-pipeline/03_outputs/downscaling",
-    "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling",
-    file.path(out_dir, "downscaling"),
-    out_dir
-  )
-  search_roots <- search_roots[dir.exists(search_roots)]
+  job_roots <- if (!is.null(job_dir)) c(file.path(job_dir, "gamble-cascade"), job_dir) else character(0)
+  job_roots <- unique(job_roots[dir.exists(job_roots)])
   cands <- character(0)
-  for (sr in search_roots) {
-    found <- list.files(sr, pattern = pat, recursive = TRUE, full.names = TRUE)
+  for (jr in job_roots) {
+    found <- list.files(jr, pattern = pat, recursive = FALSE, full.names = TRUE)
     cands <- c(cands, found)
   }
-  if (length(cands) == 0 && file.exists('/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs')) {
-    cands <- list.files('/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs', pattern = pat, recursive = TRUE, full.names = TRUE)
-  }
   cands <- cands[!grepl('_luc', cands)]
+  if (length(cands) == 0) {
+    search_roots <- c(
+      out_dir,
+      file.path(out_dir, "downscaling"),
+      "T:/ACT4CAP-model-pipeline/03_outputs/downscaling",
+      "W:/ACT4CAP-model-pipeline/03_outputs/downscaling",
+      "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling"
+    )
+    search_roots <- unique(search_roots[dir.exists(search_roots)])
+    for (sr in search_roots) {
+      found <- list.files(sr, pattern = pat, recursive = TRUE, full.names = TRUE)
+      cands <- c(cands, found)
+    }
+    if (length(cands) == 0 && file.exists('/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs')) {
+      cands <- list.files('/mnt/pdrv/globiom/Projects/DS_AgMIP/DS_results/outputs', pattern = pat, recursive = TRUE, full.names = TRUE)
+    }
+    cands <- cands[!grepl('_luc', cands)]
+  }
+  scen_cands <- cands[grepl(sprintf('_lu_%s\\.(parquet|csv)$', tolower(scenario)), basename(cands), ignore.case = TRUE)]
+  if (length(scen_cands) > 0) cands <- scen_cands
   if (length(cands) > 0) {
     # Prioritize .parquet over .csv if available
     parquet_cands <- cands[grepl('\\.parquet$', cands, ignore.case = TRUE)]
@@ -312,10 +328,23 @@ run_act4cap_cascade_downscaling <- function(model,
     input_dir = "00_inputs/macro_models",
     gamble_dir = gamble_dir
   )
+
+  eff_run_date <- if (!is.null(run_date) && nzchar(run_date) && grepl("^\\d{8}$", run_date)) run_date else format(Sys.Date(), "%Y%m%d")
+  tag <- construct_version_tag(
+    model = model,
+    scenario = scenario,
+    macro_output = vintage_info$name,
+    resolution = resolution,
+    date = eff_run_date,
+    trial = is_trial,
+    custom_tag = version_tag
+  )
+  job_dir <- file.path(out_dir, tag)
+  job_downscale_dir <- file.path(job_dir, "gamble-cascade")
   
   # 1. Check if existing processed downscaling output already exists (unless force = TRUE or downscale_output == 'none')
   if (!force && downscale_output != "none") {
-    existing <- locate_existing_downscaling(model, scenario, out_dir, gamble_dir, downscale_output = downscale_output)
+    existing <- locate_existing_downscaling(model, scenario, out_dir, gamble_dir, downscale_output = downscale_output, job_dir = job_dir)
     if (!is.null(existing$lu_file) && file.exists(existing$lu_file)) {
       cli_alert_success('Reusing existing downscaled land-use output: {basename(existing$lu_file)} [FORCE=0]')
       existing$input_vintage <- vintage_info
@@ -347,16 +376,7 @@ run_act4cap_cascade_downscaling <- function(model,
   
   # 3. In trial mode, generate standardized lightweight test slice (.parquet standard)
   if (is_trial) {
-    tag <- construct_version_tag(
-      model = model,
-      scenario = scenario,
-      macro_output = vintage_info$name,
-      resolution = resolution,
-      date = run_date,
-      trial = TRUE,
-      custom_tag = version_tag
-    )
-    trial_dir     <- file.path(out_dir, tag, 'downscaling')
+    trial_dir     <- job_downscale_dir
     trial_parquet <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_lu_%s.parquet', tag, tolower(scenario)))
     
     if (!force && file.exists(trial_parquet)) {
@@ -414,8 +434,8 @@ run_act4cap_cascade_downscaling <- function(model,
     file.path(out_dir, "intermediate", tolower(model), tolower(scenario))
   }
   if (!dir.exists(temp_dir_out)) dir.create(temp_dir_out, recursive = TRUE, showWarnings = FALSE)
-  eff_run_date <- if (!is.null(run_date) && nzchar(run_date) && grepl("^\\d{8}$", run_date)) run_date else format(Sys.Date(), "%Y%m%d")
-  cmd <- sprintf('Rscript %s %s %s "%s" "%s" "%s" "%s"', script_cand, model, scenario, vintage_info$name, out_dir, temp_dir_out, eff_run_date)
+  if (!dir.exists(job_downscale_dir)) dir.create(job_downscale_dir, recursive = TRUE, showWarnings = FALSE)
+  cmd <- sprintf('Rscript %s %s %s "%s" "%s" "%s" "%s"', script_cand, model, scenario, vintage_info$name, job_downscale_dir, temp_dir_out, eff_run_date)
   cli_alert_info('Executing: {cmd} inside {valid_gamble} (Input vintage: {vintage_info$name})')
   old_wd <- getwd()
   on.exit(setwd(old_wd))
@@ -426,8 +446,9 @@ run_act4cap_cascade_downscaling <- function(model,
   Sys.setenv(SCENARIO = tolower(scenario))
   Sys.setenv(AGMIP_INPUT_FILE = vintage_info$name)
   Sys.setenv(INPUT_FILE = vintage_info$name)
-  Sys.setenv(AGMIP_OUTPUT_DIR = out_dir)
-  Sys.setenv(OUTPUT_DIR = out_dir)
+  Sys.setenv(AGMIP_OUTPUT_DIR = job_downscale_dir)
+  Sys.setenv(OUTPUT_DIR = job_downscale_dir)
+  Sys.setenv(AGMIP_DIRECT_OUTPUT_DIR = "1")
   Sys.setenv(AGMIP_TEMP_DIR = temp_dir_out)
   Sys.setenv(TEMP_DIR = temp_dir_out)
   Sys.setenv(RUN_DATE = eff_run_date)
@@ -455,9 +476,9 @@ run_act4cap_cascade_downscaling <- function(model,
     stop(sprintf('Cascade downscaling script "%s" not found inside %s.', script_cand, valid_gamble))
   }
   
-  res <- locate_existing_downscaling(model, scenario, out_dir, gamble_dir)
+  res <- locate_existing_downscaling(model, scenario, out_dir, gamble_dir, job_dir = job_dir)
   if (is.null(res$lu_file) || !file.exists(res$lu_file)) {
-    stop(sprintf('Cascade downscaling finished but no output land-use file could be found in %s.', out_dir))
+    stop(sprintf('Cascade downscaling finished but no output land-use file could be found in %s.', job_downscale_dir))
   }
   res$input_vintage <- vintage_info
   return(res)

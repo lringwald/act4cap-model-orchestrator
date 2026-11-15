@@ -13,9 +13,9 @@
 # Unified Hierarchical Output Architecture:
 #   outputs/<tag>/
 #     ├── water_quality/   (regional summary .csv, 10km cells .parquet, composite .rds, rasters/)
-#     ├── biodiversity/    (BII/cSAR/MSA summaries .csv, 10km cells .parquet, composite .rds, rasters/)
+#     ├── biodiversity/    (BII/cSAR summaries .csv, 10km cells .parquet, composite .rds, rasters/)
 #     ├── synthesis/       (unified multi-pillar summary .csv, manifest.json)
-#     └── downscaling/     (mediated 10km land use .parquet)
+#     └── gamble-cascade/  (mediated 10km land use .parquet, rasters, diagnostics)
 #
 #   outputs/synthesis/     (central index containing all scenario syntheses .csv)
 # =============================================================================
@@ -247,7 +247,7 @@ construct_act4cap_output_filenames <- function(model,
   job_dir <- file.path(out_dir, tag)
   
   # Subdirectories for each analytical pillar
-  downscale_dir <- file.path(job_dir, "downscaling")
+  downscale_dir <- file.path(job_dir, "gamble-cascade")
   swat_out_dir  <- file.path(job_dir, "water_quality")
   bio_out_dir   <- file.path(job_dir, "biodiversity")
   synth_out_dir <- file.path(job_dir, "synthesis")
@@ -266,7 +266,7 @@ construct_act4cap_output_filenames <- function(model,
     
     # Downscaling (Spatial Mediation)
     downscaling = list(
-      dir_name    = "downscaling",
+      dir_name    = "gamble-cascade",
       dir_path    = downscale_dir,
       lu_parquet  = downscale_parquet,
       lu_file     = downscale_parquet,

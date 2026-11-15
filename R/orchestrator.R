@@ -250,7 +250,22 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
     )
   } else {
     cli::cli_alert_info('  [Step 1/3] Skipping Spatial Mediation (TASK={TASK}). Locating existing mediated maps...')
-    downscale_res <- locate_existing_downscaling(m, sc, out_path, gamble_dir_resolved, downscale_output = DOWNSCALE_OUTPUT)
+    job_vintage <- tryCatch(
+      resolve_macro_model_vintage(active_input_file, model = m, input_dir = INPUT_DIR, gamble_dir = gamble_dir_resolved),
+      error = function(e) NULL
+    )
+    expected_job_dir <- if (!is.null(job_vintage$name)) {
+      file.path(out_path, construct_version_tag(
+        model = m,
+        scenario = sc,
+        macro_output = job_vintage$name,
+        resolution = RESOLUTION,
+        date = RUN_DATE,
+        trial = TRIAL,
+        custom_tag = VERSION_TAG
+      ))
+    } else NULL
+    downscale_res <- locate_existing_downscaling(m, sc, out_path, gamble_dir_resolved, downscale_output = DOWNSCALE_OUTPUT, job_dir = expected_job_dir)
   }
   
   # Resolve the exact macro input file vintage used for model m

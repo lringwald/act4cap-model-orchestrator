@@ -164,6 +164,11 @@ synthesize_act4cap_results <- function(model,
         rasters_count = length(bio_res$rasters)
       ),
       downscaling = list(
+        dir_path      = downscale_res$out_folder,
+        lu_file       = downscale_path
+      ),
+      gamble_cascade = list(
+        dir_path      = downscale_res$out_folder,
         lu_file       = downscale_path
       )
     )
@@ -192,6 +197,7 @@ synthesize_act4cap_results <- function(model,
     "",
     "## Key Output Artifacts",
     sprintf("- **Integrated Synthesis:** `synthesis/%s`", basename(synth_csv)),
+    if (!is.null(downscale_name) && downscale_name != "none") sprintf("- **Gamble-Cascade Downscaling:** `gamble-cascade/%s`", downscale_name) else NULL,
     if (!is.null(swat_res$summary_csv)) sprintf("- **SWAT+ Water Quality Summary:** `water_quality/%s`", basename(swat_res$summary_csv)) else NULL,
     if (!is.null(swat_res$cell_parquet)) sprintf("- **SWAT+ Cell Data (Parquet):** `water_quality/%s`", basename(swat_res$cell_parquet)) else NULL,
     if (!is.null(bio_res$bii_csv)) sprintf("- **Biodiversity Link BII:** `biodiversity/%s`", basename(bio_res$bii_csv)) else NULL,

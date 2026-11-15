@@ -180,9 +180,18 @@ run_act4cap_swat_postprocess <- function(model,
 
   # Resolve ACT4CAP_INPUT_ROOT containing the downscaled model folders and rasters
   # A valid input root must contain a subfolder matching the model with *_lu_*.tif rasters
+  model_ds_folder <- if (!is.null(downscale_outputs$out_folder) &&
+                         !tolower(basename(downscale_outputs$out_folder)) %in% c("gamble-cascade", "downscaling")) {
+    basename(downscale_outputs$out_folder)
+  } else if (!is.null(lu_file) && grepl("^DS_.*_lu_", basename(lu_file))) {
+    sub("_lu_.*$", "", basename(lu_file))
+  } else {
+    sprintf("DS_ACT4CAP_AgMIP_%s_%s", toupper(model), resolution)
+  }
+
   candidate_input_roots <- c(
-    if (!is.null(downscale_outputs$out_folder)) dirname(downscale_outputs$out_folder) else NULL,
     if (!is.null(downscale_outputs$out_folder)) downscale_outputs$out_folder else NULL,
+    if (!is.null(downscale_outputs$out_folder)) dirname(downscale_outputs$out_folder) else NULL,
     "T:/ACT4CAP-model-pipeline/03_outputs/downscaling",
     "/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling",
     "W:/ACT4CAP-model-pipeline/03_outputs/downscaling",
@@ -200,8 +209,10 @@ run_act4cap_swat_postprocess <- function(model,
     direct_tifs <- list.files(cand_root, pattern = sprintf("_lu_.*%s.*\\.tiff?$", tolower(scenario)), ignore.case = TRUE)
     if (length(direct_tifs) == 0) direct_tifs <- list.files(cand_root, pattern = "_lu_.*\\.tiff?$", ignore.case = TRUE)
     
-    if (length(direct_tifs) > 0 && grepl(target_model_token, basename(cand_root), ignore.case = TRUE)) {
-      swat_input_root <- dirname(cand_root)
+    if (length(direct_tifs) > 0 &&
+        (grepl(target_model_token, basename(cand_root), ignore.case = TRUE) ||
+         any(grepl(target_model_token, direct_tifs, ignore.case = TRUE)))) {
+      swat_input_root <- if (tolower(basename(cand_root)) %in% c("gamble-cascade", "downscaling")) cand_root else dirname(cand_root)
       break
     }
     
@@ -212,6 +223,15 @@ run_act4cap_swat_postprocess <- function(model,
     
     for (sm in sub_matches) {
       tifs <- list.files(sm, pattern = sprintf("_lu_.*%s.*\\.tiff?$", tolower(scenario)), ignore.case = TRUE)
+      if (length(tifs) == 0 && dir.exists(file.path(sm, "gamble-cascade"))) {
+        sm_gc <- file.path(sm, "gamble-cascade")
+        tifs <- list.files(sm_gc, pattern = sprintf("_lu_.*%s.*\\.tiff?$", tolower(scenario)), ignore.case = TRUE)
+        if (length(tifs) == 0) tifs <- list.files(sm_gc, pattern = "_lu_.*\\.tiff?$", ignore.case = TRUE)
+        if (length(tifs) > 0) {
+          swat_input_root <- sm_gc
+          break
+        }
+      }
       if (length(tifs) == 0) tifs <- list.files(sm, pattern = "_lu_.*\\.tiff?$", ignore.case = TRUE)
       if (length(tifs) > 0) {
         swat_input_root <- cand_root
@@ -238,7 +258,7 @@ run_act4cap_swat_postprocess <- function(model,
     isolated_swat_root <- file.path(tempdir(), paste0("swat_input_", tolower(model), "_", tolower(scenario)))
     unlink(isolated_swat_root, recursive = TRUE, force = TRUE)
     dir.create(isolated_swat_root, recursive = TRUE, showWarnings = FALSE)
-    target_sub <- file.path(isolated_swat_root, basename(downscale_outputs$out_folder))
+    target_sub <- file.path(isolated_swat_root, model_ds_folder)
     linked <- tryCatch(file.symlink(downscale_outputs$out_folder, target_sub), warning = function(w) FALSE, error = function(e) FALSE)
     if (!isTRUE(linked) || !dir.exists(target_sub)) {
       dir.create(target_sub, recursive = TRUE, showWarnings = FALSE)
@@ -247,7 +267,7 @@ run_act4cap_swat_postprocess <- function(model,
     }
     if (dir.exists(target_sub) && length(list.files(target_sub, pattern = "\\.tiff?$", ignore.case = TRUE)) > 0) {
       swat_input_root <- isolated_swat_root
-      cli_alert_info('Isolated SWAT+ input root to current run folder: {basename(downscale_outputs$out_folder)}')
+      cli_alert_info('Isolated SWAT+ input root to current run folder: {model_ds_folder} [{basename(downscale_outputs$out_folder)}]')
     }
   }
 
@@ -309,7 +329,6 @@ run_act4cap_swat_postprocess <- function(model,
 
   # 4. Ingest Authentic SWAT+ Hydrological & Nutrient Simulation Tables
   # Sync prepared SWAT+ scenario/management files (excluding redundant 10k-file template TxtInOut) to persistent swat_out_dir
-  model_ds_folder <- if (!is.null(downscale_outputs$out_folder)) basename(downscale_outputs$out_folder) else ""
   swat_scen_folder <- if (tolower(scenario) %in% c("base", "baseline")) "climate_baseline_landuse_baseline" else paste0("climate_baseline_landuse_", tolower(scenario))
   work_model_dir <- file.path(swat_work_root, swat_scen_folder, model_ds_folder)
   pers_model_dir <- file.path(swat_out_dir, swat_scen_folder, model_ds_folder)

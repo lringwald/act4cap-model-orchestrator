@@ -93,7 +93,6 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
            "$WORK_DIR/01_interimmodel/snapshots" \
            "$WORK_DIR/02_postmodels/swatplus" \
            "$WORK_DIR/02_postmodels/biodiversity_link" \
-           "$WORK_DIR/03_outputs/downscaling" \
            "$WORK_DIR/$OUTPUT_DIR" \
            "$WORK_DIR/99_archive" \
            "$WORK_DIR/logs"
