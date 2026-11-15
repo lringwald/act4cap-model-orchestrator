@@ -255,7 +255,8 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       error = function(e) NULL
     )
     expected_job_dir <- if (!is.null(job_vintage$name)) {
-      file.path(out_path, construct_version_tag(
+      construct_job_dir(
+        out_dir = out_path,
         model = m,
         scenario = sc,
         macro_output = job_vintage$name,
@@ -263,7 +264,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
         date = RUN_DATE,
         trial = TRIAL,
         custom_tag = VERSION_TAG
-      ))
+      )
     } else NULL
     downscale_res <- locate_existing_downscaling(m, sc, out_path, gamble_dir_resolved, downscale_output = DOWNSCALE_OUTPUT, job_dir = expected_job_dir)
   }

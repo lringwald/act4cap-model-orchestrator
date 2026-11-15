@@ -5,8 +5,8 @@
 # metrics into unified indicator tables and summary dashboards.
 #
 # Unified Structure:
-#   outputs/<tag>/synthesis/act4cap_integrated_synthesis_<tag>.csv
-#   outputs/<tag>/manifest.json
+#   outputs/<macro_output_stem>/<model>/<model>_<scenario>_<res>_<date>/synthesis/act4cap_integrated_synthesis_<tag>.csv
+#   outputs/<macro_output_stem>/<model>/<model>_<scenario>_<res>_<date>/manifest.json
 #   outputs/synthesis/act4cap_integrated_synthesis_<tag>.csv (central index)
 # =============================================================================
 suppressPackageStartupMessages({
@@ -217,7 +217,7 @@ synthesize_act4cap_results <- function(model,
     downscale_file   = downscale_name,
     resolution       = resolution,
     run_date         = if (!is.null(run_date) && nzchar(run_date)) run_date else format(Sys.Date(), "%Y%m%d"),
-    job_directory    = fn$tag,
+    job_directory    = fn$rel_job_dir,
     synthesis_csv    = file.path("synthesis", basename(central_csv)),
     timestamp_utc    = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
   )

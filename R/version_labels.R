@@ -11,7 +11,7 @@
 #   - In-memory State / Metadata Bundles: .rds
 #
 # Unified Hierarchical Output Architecture:
-#   outputs/<tag>/
+#   outputs/<macro_output_stem>/<model>/<model>_<scenario>_<res>_<date>[_<tag>][_TRIAL]/
 #     ├── water_quality/   (regional summary .csv, 10km cells .parquet, composite .rds, rasters/)
 #     ├── biodiversity/    (BII/cSAR summaries .csv, 10km cells .parquet, composite .rds, rasters/)
 #     ├── synthesis/       (unified multi-pillar summary .csv, manifest.json)
@@ -109,6 +109,64 @@ construct_version_tag <- function(model,
   tag <- paste(parts, collapse = "_")
   tag <- gsub(sprintf("^%s_%s_%s_%s_", m_str, sc_str, m_str, sc_str), sprintf("%s_%s_", m_str, sc_str), tag)
   tag
+}
+
+construct_run_folder_name <- function(model,
+                                      scenario,
+                                      resolution = "10km",
+                                      date = NULL,
+                                      trial = FALSE,
+                                      custom_tag = NULL) {
+  is_trial <- isTRUE(trial) || identical(trial, "1") || identical(trial, 1L)
+
+  m_str  <- tolower(clean_token(model))
+  sc_str <- tolower(clean_token(scenario))
+
+  res_clean <- tolower(clean_token(resolution))
+  if (!grepl("km$", res_clean)) res_clean <- paste0(res_clean, "km")
+
+  date_str <- if (!is.null(date) && nzchar(date) && date != "auto" && date != "today") {
+    clean_token(date)
+  } else {
+    format(Sys.Date(), "%Y%m%d")
+  }
+
+  ctag_str <- if (!is.null(custom_tag) && nzchar(custom_tag) && custom_tag != "auto" && custom_tag != "none") {
+    clean_token(custom_tag)
+  } else {
+    NULL
+  }
+
+  trial_str <- if (is_trial) "TRIAL" else NULL
+
+  parts <- c(m_str, sc_str, res_clean, date_str, ctag_str, trial_str)
+  parts <- parts[nzchar(parts)]
+  paste(parts, collapse = "_")
+}
+
+construct_job_dir <- function(out_dir = "outputs",
+                              model,
+                              scenario,
+                              macro_output = NULL,
+                              downscale_csv = NULL,
+                              resolution = "10km",
+                              date = NULL,
+                              trial = FALSE,
+                              custom_tag = NULL) {
+  m_str <- tolower(clean_token(model))
+  macro_stem <- extract_macro_output_stem(macro_output, downscale_csv, model)
+  if (!nzchar(macro_stem)) macro_stem <- "default_input"
+
+  run_folder <- construct_run_folder_name(
+    model = model,
+    scenario = scenario,
+    resolution = resolution,
+    date = date,
+    trial = trial,
+    custom_tag = custom_tag
+  )
+
+  file.path(out_dir, macro_stem, m_str, run_folder)
 }
 
 # --- IO helpers enforcing standard file formats -------------------------------
@@ -242,9 +300,22 @@ construct_act4cap_output_filenames <- function(model,
     trial = trial,
     custom_tag = custom_tag
   )
-  
-  # Unified Job Directory: outputs/<tag>/
-  job_dir <- file.path(out_dir, tag)
+
+  m_str <- tolower(clean_token(model))
+  macro_stem <- extract_macro_output_stem(macro_output, downscale_csv, model)
+  if (!nzchar(macro_stem)) macro_stem <- "default_input"
+  run_folder <- construct_run_folder_name(
+    model = model,
+    scenario = scenario,
+    resolution = resolution,
+    date = date,
+    trial = trial,
+    custom_tag = custom_tag
+  )
+  rel_job_dir <- file.path(macro_stem, m_str, run_folder)
+
+  # Unified Job Directory: outputs/<macro_stem>/<model>/<run_folder>/
+  job_dir <- file.path(out_dir, rel_job_dir)
   
   # Subdirectories for each analytical pillar
   downscale_dir <- file.path(job_dir, "gamble-cascade")
@@ -261,8 +332,12 @@ construct_act4cap_output_filenames <- function(model,
   downscale_parquet <- file.path(downscale_dir, sprintf("DS_ACT4CAP_AgMIP_%s_lu_%s.parquet", tag, tolower(scenario)))
   
   list(
-    tag     = tag,
-    job_dir = job_dir,
+    tag         = tag,
+    macro_stem  = macro_stem,
+    model_dir   = m_str,
+    run_folder  = run_folder,
+    rel_job_dir = rel_job_dir,
+    job_dir     = job_dir,
     
     # Downscaling (Spatial Mediation)
     downscaling = list(

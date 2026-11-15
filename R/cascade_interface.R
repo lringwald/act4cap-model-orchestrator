@@ -186,6 +186,8 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
       if (!is.null(job_dir)) file.path(job_dir, downscale_output) else NULL,
       file.path(out_dir, downscale_output, "gamble-cascade"),
       file.path(out_dir, "gamble-cascade", downscale_output),
+      Sys.glob(file.path(out_dir, "*", tolower(model), downscale_output, "gamble-cascade")),
+      Sys.glob(file.path(out_dir, "*", tolower(model), downscale_output)),
       file.path("T:/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
       file.path("W:/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
       file.path("/mnt/wdrv/ACT4CAP-model-pipeline/03_outputs/downscaling", downscale_output),
@@ -330,17 +332,19 @@ run_act4cap_cascade_downscaling <- function(model,
   )
 
   eff_run_date <- if (!is.null(run_date) && nzchar(run_date) && grepl("^\\d{8}$", run_date)) run_date else format(Sys.Date(), "%Y%m%d")
-  tag <- construct_version_tag(
+  fn <- construct_act4cap_output_filenames(
     model = model,
     scenario = scenario,
     macro_output = vintage_info$name,
     resolution = resolution,
     date = eff_run_date,
     trial = is_trial,
-    custom_tag = version_tag
+    custom_tag = version_tag,
+    out_dir = out_dir
   )
-  job_dir <- file.path(out_dir, tag)
-  job_downscale_dir <- file.path(job_dir, "gamble-cascade")
+  tag <- fn$tag
+  job_dir <- fn$job_dir
+  job_downscale_dir <- fn$downscaling$dir_path
   
   # 1. Check if existing processed downscaling output already exists (unless force = TRUE or downscale_output == 'none')
   if (!force && downscale_output != "none") {
