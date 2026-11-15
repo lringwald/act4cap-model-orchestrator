@@ -59,7 +59,19 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
       if (!is.null(gamble_dir)) file.path(gamble_dir, "data", "macro_models", input_file),
       if (!is.null(gamble_dir)) file.path(gamble_dir, "data", input_file)
     )
-    cands <- cands[!is.null(cands)]
+    glob_roots <- unique(c(
+      input_dir,
+      "/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models",
+      "T:/ACT4CAP-model-pipeline/00_inputs/macro_models",
+      "W:/ACT4CAP-model-pipeline/00_inputs/macro_models"
+    ))
+    glob_cands <- unlist(lapply(glob_roots[dir.exists(glob_roots)], function(rt) {
+      c(
+        Sys.glob(file.path(rt, "*", input_file)),
+        Sys.glob(file.path(rt, "*", "*", input_file))
+      )
+    }), use.names = FALSE)
+    cands <- unique(c(cands[!is.null(cands)], glob_cands))
     for (cand in cands) {
       if (file.exists(cand)) {
         return(list(
@@ -136,6 +148,45 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
   }
 
   stop(sprintf("No external macro model vintage found for %s. Fallback to default vintage is prohibited by Data Integrity rules.", toupper(model)))
+}
+
+discover_csv_models_and_scenarios <- function(csv_path) {
+  empty_res <- list(models = character(0), scenarios_by_model = list(), all_scenarios = character(0))
+  if (is.null(csv_path) || !nzchar(csv_path) || !file.exists(csv_path)) return(empty_res)
+  if (!grepl("\\.csv$", csv_path, ignore.case = TRUE)) return(empty_res)
+
+  local_csv <- stage_remote_file_to_local(csv_path)
+  hdr <- tryCatch(names(data.table::fread(local_csv, nrows = 0L, showProgress = FALSE)), error = function(e) character(0))
+  if (length(hdr) == 0) return(empty_res)
+
+  idx <- match(c("model", "scenario", "variable"), tolower(trimws(hdr)))
+  if (any(is.na(idx))) return(empty_res)
+
+  dt_meta <- tryCatch(
+    data.table::fread(local_csv, select = idx, showProgress = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(dt_meta) || nrow(dt_meta) == 0) return(empty_res)
+
+  data.table::setnames(dt_meta, c("model", "scenario", "variable"))
+  dt_meta <- dt_meta[tolower(trimws(as.character(variable))) == "land"]
+  if (nrow(dt_meta) == 0) return(empty_res)
+
+  dt_meta[, `:=`(
+    model = tolower(trimws(as.character(model))),
+    scenario = tolower(trimws(as.character(scenario)))
+  )]
+  pairs <- unique(dt_meta[nzchar(model) & nzchar(scenario), .(model, scenario)])
+  if (nrow(pairs) == 0) return(empty_res)
+
+  sc_by_m <- split(pairs$scenario, pairs$model)
+  sc_by_m <- lapply(sc_by_m, unique)
+
+  list(
+    models = unique(pairs$model),
+    scenarios_by_model = sc_by_m,
+    all_scenarios = unique(pairs$scenario)
+  )
 }
 
 ensure_downscale_parquet <- function(lu_file, model, scenario, out_dir) {
@@ -424,6 +475,30 @@ run_act4cap_cascade_downscaling <- function(model,
   }
   
   # 4. Production dispatch via Rscript run_downscaling.R
+  vintage_tag <- tools::file_path_sans_ext(basename(vintage_info$name))
+  cache_dir <- file.path(valid_gamble, "data", "intermediate")
+  agmip_cache_path <- file.path(cache_dir, sprintf("agmip_dt_%s_%s.rds", tolower(model), vintage_tag))
+  if (!is.null(vintage_info$path) && file.exists(vintage_info$path) && !file.exists(agmip_cache_path) &&
+      grepl("\\.csv$", vintage_info$path, ignore.case = TRUE)) {
+    cli_alert_info("Pre-caching AgMIP model slice to {basename(agmip_cache_path)} from {basename(vintage_info$path)}...")
+    if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    target_m <- tolower(model)
+    dt_cache <- safe_fread(vintage_info$path, showProgress = FALSE)
+    data.table::setnames(dt_cache, tolower(names(dt_cache)))
+    dt_cache[, model := tolower(model)]
+    dt_cache <- dt_cache[model == target_m]
+    dt_cache[, `:=`(
+      region = tolower(region),
+      variable = tolower(variable),
+      item = tolower(item),
+      scenario = tolower(scenario)
+    )]
+    dt_cache <- unique(dt_cache)
+    tryCatch(saveRDS(dt_cache, agmip_cache_path), error = function(e) NULL)
+    rm(dt_cache)
+    gc(verbose = FALSE)
+  }
+
   script_cand <- if (file.exists(file.path(valid_gamble, 'pipelines', 'AGMIP', 'run_downscaling.R'))) {
     'pipelines/AGMIP/run_downscaling.R'
   } else if (file.exists(file.path(valid_gamble, 'scripts', 'AGMIP', 'run_downscaling.R'))) {

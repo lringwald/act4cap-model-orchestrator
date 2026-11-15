@@ -293,7 +293,7 @@ run_act4cap_swat_postprocess <- function(model,
   Sys.setenv(PYTHONPATH               = paste(unique(c(swat_dir, Sys.getenv("PYTHONPATH"))), collapse = .Platform$path.sep))
 
   txtinout_dir <- file.path(defaults_dir, 'TxtInOut')
-  if (file.exists(run_py)) {
+  if (file.exists(run_py) && !isTRUE(is_trial)) {
     cli_alert_info('Dispatching authentic SWAT+ pipeline: {basename(run_py)} [INPUT_ROOT={swat_input_root}, MODEL={toupper(model)}]...')
     scen_arg <- if (tolower(scenario) %in% c('base', 'baseline')) 'baseline' else scenario
     dispatch_cmd <- if (basename(run_py) == '0_run_pipeline.py') {

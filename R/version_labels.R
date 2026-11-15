@@ -270,6 +270,29 @@ write_cell_tabular_data <- function(dt, parquet_path) {
   csv_path
 }
 
+stage_remote_file_to_local <- function(file_path) {
+  if (is.null(file_path) || !nzchar(file_path) || !file.exists(file_path)) return(file_path)
+  if (!grepl("^/mnt/", file_path, ignore.case = TRUE)) return(file_path)
+  fsize <- tryCatch(file.info(file_path)$size, error = function(e) NA_real_)
+  if (is.na(fsize) || fsize <= 0) return(file_path)
+  local_dir <- file.path(tempdir(), "act4cap_staged")
+  if (!dir.exists(local_dir)) dir.create(local_dir, recursive = TRUE, showWarnings = FALSE)
+  local_path <- file.path(local_dir, paste0(as.character(trunc(fsize)), "_", basename(file_path)))
+  if (file.exists(local_path) && identical(tryCatch(file.info(local_path)$size, error = function(e) -1), fsize)) {
+    return(local_path)
+  }
+  ok <- tryCatch(file.copy(file_path, local_path, overwrite = TRUE), error = function(e) FALSE)
+  if (isTRUE(ok) && file.exists(local_path) && identical(tryCatch(file.info(local_path)$size, error = function(e) -1), fsize)) {
+    return(local_path)
+  }
+  file_path
+}
+
+safe_fread <- function(file_path, ...) {
+  loc <- stage_remote_file_to_local(file_path)
+  data.table::fread(loc, ...)
+}
+
 read_cell_tabular_data <- function(file_path, nrows = Inf) {
   if (grepl("\\.parquet$", file_path, ignore.case = TRUE)) {
     if (requireNamespace("arrow", quietly = TRUE)) {
@@ -278,7 +301,7 @@ read_cell_tabular_data <- function(file_path, nrows = Inf) {
       return(dt)
     }
   }
-  data.table::fread(file_path, nrows = nrows)
+  safe_fread(file_path, nrows = nrows)
 }
 
 construct_act4cap_output_filenames <- function(model,

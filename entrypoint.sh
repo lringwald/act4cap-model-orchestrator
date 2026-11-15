@@ -107,6 +107,9 @@ if [ -n "$WORK_DIR" ] && [ -d "$(dirname "$WORK_DIR")" ]; then
     if [ -d "/app/vendor/gamble-cascade" ]; then
       cp -rf /app/vendor/gamble-cascade/. /tmp/gamble-cascade-live/
       echo ">>> Seeded /tmp/gamble-cascade-live from container image (/app/vendor/gamble-cascade)"
+    elif [ -d "$GAMBLE_TARGET/pipelines" ] || [ -d "$GAMBLE_TARGET/scripts" ]; then
+      cp -rf "$GAMBLE_TARGET/pipelines" "$GAMBLE_TARGET/scripts" /tmp/gamble-cascade-live/ 2>/dev/null || true
+      echo ">>> Seeded /tmp/gamble-cascade-live scripts from shared workspace ($GAMBLE_TARGET)"
     fi
     # Optional non-interactive refresh from GitHub if credentials or public access are available
     if GIT_TERMINAL_PROMPT=0 GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 --recursive https://github.com/lringwald/gamble-cascade.git /tmp/gamble-cascade-git 2>/dev/null; then

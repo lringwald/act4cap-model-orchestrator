@@ -158,9 +158,44 @@ scenario_tokens <- scenario_tokens[nzchar(scenario_tokens)]
 all_scenarios <- c('base', 'mitigation', 'diet', 'biodiversity')
 scenarios_to_run <- if ('all' %in% scenario_tokens) all_scenarios else unique(scenario_tokens)
 
-# 4. Preview / Resolve input vintage
+# 4. Preview / Resolve input vintage & dynamic model/scenario discovery for explicit CSVs
 active_input_file <- if (nzchar(CUSTOM_INPUT_FILE) && CUSTOM_INPUT_FILE != "none") CUSTOM_INPUT_FILE else INPUT_FILE
 vintage_preview   <- resolve_macro_model_vintage(active_input_file, model = models_to_run[1], input_dir = INPUT_DIR, gamble_dir = gamble_dir_resolved)
+
+csv_meta <- NULL
+if (nzchar(active_input_file) && active_input_file != "latest" &&
+    !is.null(vintage_preview$path) && file.exists(vintage_preview$path) &&
+    grepl("\\.csv$", vintage_preview$path, ignore.case = TRUE) &&
+    exists("discover_csv_models_and_scenarios")) {
+  csv_meta <- discover_csv_models_and_scenarios(vintage_preview$path)
+  if ('all' %in% macro_tokens && length(csv_meta$models) > 0) {
+    models_to_run <- csv_meta$models
+  }
+}
+
+resolve_scenarios_for_model <- function(m_name, raw_tokens, default_scenarios, meta) {
+  if (is.null(meta) || length(meta$scenarios_by_model) == 0) return(default_scenarios)
+  avail <- meta$scenarios_by_model[[tolower(m_name)]]
+  if (is.null(avail) || length(avail) == 0) return(default_scenarios)
+  if ('all' %in% raw_tokens) return(avail)
+  mapped <- vapply(unique(raw_tokens), function(tk) {
+    tl <- tolower(tk)
+    if (tl %in% avail) return(tl)
+    if (tl == "base" && "baseline" %in% avail) return("baseline")
+    if (tl == "baseline" && "base" %in% avail) return("base")
+    if (tl == "biodiversity" && "biod" %in% avail) return("biod")
+    tl
+  }, character(1))
+  unique(unname(mapped))
+}
+
+job_grid_rows <- lapply(models_to_run, function(m) {
+  sc_vec <- resolve_scenarios_for_model(m, scenario_tokens, scenarios_to_run, csv_meta)
+  data.frame(model = m, scenario = sc_vec, stringsAsFactors = FALSE)
+})
+job_grid <- do.call(rbind, job_grid_rows)
+rownames(job_grid) <- NULL
+scenarios_to_run <- unique(job_grid$scenario)
 
 cli_h1('Act4Cap Integrated Modelling Orchestrator')
 cli_alert_info('Task:              {toupper(TASK)}')
@@ -211,18 +246,13 @@ if (startsWith(work_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows"
 out_path <- file.path(work_dir_resolved, OUTPUT_DIR)
 if (!dir.exists(out_path)) dir.create(out_path, recursive = TRUE)
 
-# 5. Construct execution grid
-job_grid <- expand.grid(
-  model = models_to_run,
-  scenario = scenarios_to_run,
-  stringsAsFactors = FALSE
-)
+# 5. Construct execution grid (built in Step 4)
 total_jobs <- nrow(job_grid)
 parallel_models <- tolower(get_param("PARALLEL_MODELS", "0")) %in% c("1", "true", "yes")
 n_workers <- if (parallel_models) min(NCORES, total_jobs) else 1L
 inner_cores <- max(1L, floor(NCORES / n_workers))
 
-cli_alert_info('Job Grid:          {total_jobs} total job(s) ({length(models_to_run)} model(s) x {length(scenarios_to_run)} scenario(s))')
+cli_alert_info('Job Grid:          {total_jobs} total job(s)')
 cli_alert_info('Worker Allocation: {n_workers} concurrent worker(s), each with {inner_cores} core(s)')
 
 # 6. Worker execution function for a single (model, scenario) job
