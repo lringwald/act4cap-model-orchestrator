@@ -6,3 +6,4 @@
 - GAMBLE–CASCADE Project Architecture: see `.claude/rules/gamble-cascade-project.md`.
 - Spatial Data Processing & Downscaling Rulebook: see `.claude/rules/spatial-downscaling.md`.
 - Statistical & Econometric Modeling Guidelines: see `.claude/rules/statistical-modeling.md`.
+- Reporting & Publication Rulebook: see `.claude/rules/reporting-publication.md`.

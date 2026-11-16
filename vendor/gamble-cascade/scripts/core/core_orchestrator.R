@@ -1434,6 +1434,27 @@ if (RUN_CHECKS) {
       )
 
       for (scen in scenarios) {
+        # Determine fixed, deterministic class universe across all years of this scenario
+        all_crop_classes <- if (exists("prod_ds") && is.data.frame(prod_ds) && nrow(prod_ds) > 0) {
+          p_dt <- as.data.table(prod_ds)
+          if (has_scen) p_dt <- p_dt[scenario == scen]
+          p_dt[is.na(GLOB_CSYS), GLOB_CSYS := ""]
+          p_dt[is.na(GLOB_CTYP), GLOB_CTYP := ""]
+          u_cls <- unique(p_dt[, .(GLOB_CSYS, GLOB_CTYP)])
+          setorder(u_cls, GLOB_CSYS, GLOB_CTYP)
+          u_cls
+        } else data.table(GLOB_CSYS = character(0), GLOB_CTYP = character(0))
+
+        all_lsu_classes <- if (exists("lsu_ds") && is.data.frame(lsu_ds) && nrow(lsu_ds) > 0) {
+          l_dt <- as.data.table(lsu_ds)
+          if (has_scen) l_dt <- l_dt[scenario == scen]
+          l_dt[is.na(GLOB_LSSYS), GLOB_LSSYS := ""]
+          l_dt[is.na(GLOB_LSTYP), GLOB_LSTYP := ""]
+          u_cls <- unique(l_dt[, .(GLOB_LSSYS, GLOB_LSTYP)])
+          setorder(u_cls, GLOB_LSSYS, GLOB_LSTYP)
+          u_cls
+        } else data.table(GLOB_LSSYS = character(0), GLOB_LSTYP = character(0))
+
         for (yr in years) {
           fname_suffix <- ""
           if (has_scen) fname_suffix <- paste0(fname_suffix, "_", scen)
@@ -1519,7 +1540,7 @@ if (RUN_CHECKS) {
             ind_agg[is.na(GLOB_CSYS), GLOB_CSYS := ""]
             ind_agg[is.na(GLOB_CTYP), GLOB_CTYP := ""]
 
-            present_classes <- unique(ind_agg[, .(GLOB_CSYS, GLOB_CTYP)])
+            present_classes <- if (nrow(all_crop_classes) > 0) all_crop_classes else unique(ind_agg[, .(GLOB_CSYS, GLOB_CTYP)])
             valid_classes <- character()
             valid_vals <- list()
 
@@ -1616,7 +1637,7 @@ if (RUN_CHECKS) {
                 ind_agg[is.na(GLOB_LSSYS), GLOB_LSSYS := ""]
                 ind_agg[is.na(GLOB_LSTYP), GLOB_LSTYP := ""]
 
-                present_classes <- unique(ind_agg[, .(GLOB_LSSYS, GLOB_LSTYP)])
+                present_classes <- if (nrow(all_lsu_classes) > 0) all_lsu_classes else unique(ind_agg[, .(GLOB_LSSYS, GLOB_LSTYP)])
                 valid_classes <- character()
                 valid_vals <- list()
 

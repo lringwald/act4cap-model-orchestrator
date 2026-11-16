@@ -4,9 +4,11 @@ paths:
   - "data/**/*"
   - "pipelines/**/*.{R,py}"
   - "scripts/**/*.{R,py}"
+  - "R/**/*.R"
+  - "data-raw/**/*.{R,py}"
   - "notebooks/**/*.{ipynb,qmd,Rmd}"
   - "**/*.{csv,tsv,parquet,json,yaml,yml}"
-  - "**/{SOURCES,DATA,LINEAGE,MODEL_LINEAGE}*.md"
+  - "**/{SOURCES,DATA,LINEAGE,MODEL_LINEAGE,PIPELINE_LINEAGE}*.md"
 # Antigravity Model Decision Trigger:
 trigger: model_decision
 description: "Data integrity, provenance and integration: no fabricated or hallucinated data, values, mappings or sources; no ad hoc or manual manipulation of data or results; immutable raw data; verified identifiers; vetting, registering and staged integration of new datasets; honest reporting of what was run versus assumed."
@@ -37,8 +39,9 @@ It complements `data-pipelines.md`, which covers the mechanics of running pipeli
 3. **Every correction is a documented step:** what was changed, why, the rule applied (not a list of hand-picked rows), and the before/after effect (row counts, totals, affected regions). Record it in the lineage document.
 4. **No result-driven cleaning.** Do not drop, clip, smooth, winsorize, or rescale data because the results look better afterwards. Outlier and error handling follows rules fixed *before* looking at the results (see the statistical rulebook, Principle 0).
 5. **No silent tuning to validation data.** Calibrating parameters, thresholds, or class mappings against the data later used to evaluate the result is declared, and evaluation then uses independent data.
-6. **Inconsistencies are reported, not smoothed over.** When two sources disagree, the size of the disagreement is part of the result.
-7. **Missing, suppressed, and zero are three different states.**
+6. **No selective reporting of runs or variants.** Picking the run, seed, specification, or variant that gives the preferred result, or dropping variants because of their results, is result-driven manipulation. All declared variants of a production run are reported, failed ones as failed; variants added after seeing results are marked as such (data-pipelines rulebook, Principle 15; statistical rulebook, D.4).
+7. **Inconsistencies are reported, not smoothed over.** When two sources disagree, the size of the disagreement is part of the result.
+8. **Missing, suppressed, and zero are three different states.**
    - Official statistics often suppress values for confidentiality or reliability, marked with flags (e.g. `:` or `c`).
    - A suppressed value is never coded as 0, silently dropped, or treated like ordinary missing data. Keep the flag through the pipeline.
    - Handle suppression explicitly: use bounds (e.g. from known totals of the remaining cells), a documented imputation with its uncertainty, or aggregation to a level where values are published. Record the choice in lineage.
@@ -116,6 +119,7 @@ Before using new data or publishing results:
 - [ ] **No fabrication:** no invented values, mappings, identifiers, or sources; placeholders fail if used; synthetic data only in tests.
 - [ ] **No manipulation:** raw data unchanged; every correction is versioned code with rationale and before/after effect.
 - [ ] **No result-driven cleaning or tuning:** cleaning rules fixed in advance; calibration against evaluation data declared.
+- [ ] **No selective reporting:** all declared variants and runs reported; no picking of the preferred run, seed, or variant.
 - [ ] **Missing / suppressed / zero:** kept distinct, suppression flags preserved, handling documented.
 - [ ] **Verified identifiers:** column names, codes, and paths checked against the data or code.
 - [ ] **Source cards:** complete for every dataset used, including licence and version.

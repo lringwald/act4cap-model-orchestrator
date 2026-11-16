@@ -87,6 +87,61 @@ load_master_grid_lookup <- function(resolution = '10km', gamble_dir = NULL) {
   return(mg_u)
 }
 
+# -----------------------------------------------------------------------------
+# Spatial bridge: maps grid cell IDs (EEA_<res>ID, default EEA_10kmID) to
+# GLOBIOM SimUID for Biodiversity Link (forest_share.RData, ecoregions_share.RData)
+# -----------------------------------------------------------------------------
+load_master_simuid_bridge <- function(resolution = '10km', gamble_dir = NULL) {
+  res_label <- normalize_grid_resolution(resolution)
+  id_col <- paste0('EEA_', res_label, 'ID')
+  tmp_cache <- file.path(tempdir(), sprintf('master_simuid_%s_bridge.rds', res_label))
+  if (file.exists(tmp_cache)) return(readRDS(tmp_cache))
+
+  cands <- c(
+    if (!is.null(gamble_dir)) file.path(gamble_dir, 'data', 'aux_files'),
+    if (nzchar(Sys.getenv('CASCADING_GAMBLE_DIR', ''))) file.path(Sys.getenv('CASCADING_GAMBLE_DIR'), 'data', 'aux_files'),
+    '/tmp/gamble-cascade-live/data/aux_files',
+    '/mnt/wdrv/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
+    '/mnt/wdrv/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
+    'T:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
+    'T:/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
+    'W:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
+    'W:/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
+    'data/aux_files',
+    '../cascadinggamble-core/data/aux_files',
+    'g:/My Drive/R/cascadinggamble-core/data/aux_files',
+    'inputs/aux_files'
+  )
+  cands <- unique(cands[!is.null(cands) & nzchar(cands) & dir.exists(cands)])
+  pq_files <- character(0)
+  for (cd in cands) {
+    found <- list.files(cd, pattern = 'one_kmID_master_mapping_.*\\.parquet$', full.names = TRUE)
+    pq_files <- c(pq_files, found)
+  }
+  if (length(pq_files) == 0 || !requireNamespace('arrow', quietly = TRUE)) return(NULL)
+
+  latest_pq <- sort(pq_files, decreasing = TRUE)[1]
+  mg <- tryCatch({
+    as.data.table(arrow::read_parquet(latest_pq, col_select = c(id_col, 'GLOB_SimUID'), memory_map = FALSE))
+  }, error = function(e) NULL)
+  if (is.null(mg) || nrow(mg) == 0) return(NULL)
+
+  setnames(mg, id_col, 'ns')
+  mg <- mg[!is.na(ns) & ns > 0]
+  mg[, sim_char := as.character(GLOB_SimUID)]
+  mg[, simu := suppressWarnings(as.integer(sub('^GLOB_', '', sim_char)))]
+  mg <- mg[!is.na(simu) & simu > 0]
+  if (nrow(mg) == 0) return(NULL)
+
+  # Compute 1km sub-pixel area weights per (ns, SimUID)
+  bridge <- mg[, .(sub_count = .N), by = .(ns = as.character(ns), SimUID = simu)]
+  bridge[, simu_weight := sub_count / sum(sub_count), by = ns]
+  bridge[, sub_count := NULL]
+
+  tryCatch(saveRDS(bridge, tmp_cache), error = function(e) NULL)
+  return(bridge)
+}
+
 # Backward-compatible wrapper
 load_master_grid_10km_lookup <- function(gamble_dir = NULL, resolution = '10km') {
   load_master_grid_lookup(resolution = resolution, gamble_dir = gamble_dir)

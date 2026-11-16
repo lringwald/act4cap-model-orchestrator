@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python-is-python3 python3-pip \
       python3-numpy python3-pandas python3-xarray \
       python3-rasterio python3-geopandas python3-shapely python3-rtree \
+      wine64 wine \
  && pip3 install --no-cache-dir rioxarray \
  && python3 -c "import rasterio, geopandas, shapely, xarray, rioxarray, rtree; print('>>> Verified Python geospatial stack for SWAT+')" \
  && rm -rf /var/lib/apt/lists/*

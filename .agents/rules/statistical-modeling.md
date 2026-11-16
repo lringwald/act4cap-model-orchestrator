@@ -17,7 +17,7 @@ paths:
   - "external/**/*.{R,cpp,cc,c,h,hpp,stan}"
 # Antigravity Model Decision Trigger:
 trigger: model_decision
-description: "Statistical and econometric modeling invariants: data lineage (MODEL_LINEAGE.md), bijective scaling, Gibbs/BlackJAX/Stan efficiency, exhaustive convergence triage, residual forensics, continuous credibility, horseshoe shrinkage, posterior predictive checks (accuracy, calibration/coverage, sharpness, tails; LOO measures; benchmark models), uncertainty propagation to derived and downstream quantities, and prior plausibility (elicitation of signs and effect-size ranges, joint prior predictive checks, prior-posterior sensitivity, documented prior revision)."
+description: "Statistical and econometric modeling invariants: data lineage (MODEL_LINEAGE.md), bijective scaling, Gibbs/BlackJAX/Stan efficiency, exhaustive convergence triage, residual forensics, continuous credibility, horseshoe shrinkage, posterior predictive checks (accuracy, calibration/coverage, sharpness, tails; LOO measures; benchmark models), uncertainty propagation to derived and downstream quantities, and prior plausibility (elicitation of signs and effect-size ranges, joint prior predictive checks, prior-posterior sensitivity, documented prior revision), and robustness and sensitivity variants (declared before results, one change each, same diagnostic standards, all reported)."
 ---
 
 # Statistical & Econometric Modeling Guidelines
@@ -58,6 +58,8 @@ $$\mathcal{P} = \left( \mathcal{S}, \, \mathcal{T}, \, \mathcal{M}, \, \mathcal{
    Document the exact back-transformation mapping posterior draws $\tilde{\boldsymbol{\theta}}^{(s)}$ and estimation-scale predictions $\tilde{y}^{*(s)}$ to natural units:
    $$y^{*(s)} = \phi_y^{-1}(\tilde{y}^{*(s)}; \boldsymbol{\eta}_y)$$
    alongside natural-scale marginal effects $\frac{\partial \mathbb{E}[y \mid \mathbf{X}]}{\partial X_j}$, elasticities, and spatial multiplier decompositions.
+
+**One specification source.** The specification documented here ($\mathcal{S}$, $\mathcal{T}$, $\mathcal{M}$ including the priors, and $\mathcal{G}^{-1}$) is kept machine-readable in one place, from which the estimation code is built or checked. `MODEL_LINEAGE.md`, and the equations, prior tables, and technical appendices of reports (`reporting-publication.md`, Principle 1), are generated from it, or asserted against it, for the main model and every declared variant (D.4).
 
 ---
 
@@ -275,7 +277,7 @@ The elicited ranges from A.3 are checked against the posterior, and priors are r
 2. **Measure how much the data informed each parameter:**
    - **Posterior contraction:** $1 - \text{Var}_{\text{post}}(\theta) / \text{Var}_{\text{prior}}(\theta)$. Values near 0 mean the posterior is essentially the prior; report such parameters as prior-driven, not as estimated.
    - **Prior sensitivity and prior–data conflict:** power-scaling sensitivity analysis (e.g. the `priorsense` R package), which flags estimands that change materially when the prior or the likelihood is scaled, and distinguishes prior sensitivity from prior–data conflict.
-   - For key estimands, refit under a deliberately wider and a narrower prior and report how much the substantive conclusions (D.1, D.2) move.
+   - For key estimands, refit under a deliberately wider and a narrower prior and report how much the substantive conclusions (D.1, D.2) move. These refits are declared prior variants of the production run (D.4).
 3. **When revising a prior is legitimate:**
    - the prior predictive check (A.3) failed and this was only noticed later;
    - a diagnosed prior–data conflict with a substantive explanation (e.g. the literature range came from a different context or scale);
@@ -327,6 +329,23 @@ Posterior uncertainty must reach every quantity that is reported or passed on to
    - **Declared point estimate (default):** pass one point estimate downstream, and declare it in lineage and in the outputs.
      - Use the posterior mean of the quantity the downstream step consumes, e.g. the average over draws of each pixel's class probabilities, $\bar{p}_{ik} = \frac{1}{S}\sum_s p_{ik}(\theta^{(s)})$, not $p_{ik}(\bar{\theta})$.
      - Downstream outputs then carry no parameter uncertainty. Reports must say so, and must not present their spread across scenarios as parameter uncertainty.
-3. **Name the sources of uncertainty included.** Parameter uncertainty is one source; others are input data (e.g. classification accuracy of the inputs), structural choices (model specification, processing settings), and scenarios. State which are propagated, which are assessed by sensitivity analysis, and which are not quantified.
+3. **Name the sources of uncertainty included.** Parameter uncertainty is one source; others are input data (e.g. classification accuracy of the inputs), structural choices (model specification, processing settings), and scenarios. State which are propagated, which are assessed by sensitivity analysis (declared variants, D.4), and which are not quantified.
 4. **Report derived quantities with intervals** (D.1), and, for ensembles, with the Monte Carlo error from the finite ensemble size.
 
+### D.4 Robustness & Sensitivity Variants
+Conclusions are checked against the choices they could depend on, through **declared variants** of the main model. They are run together with it in one production run (`data-pipelines.md`, Principle 15) and reported together (`reporting-publication.md`, Principle 2).
+
+1. **Decide what needs checking, before estimation.** For each headline conclusion, list the choices that could plausibly change it, and declare one variant per choice (or a small design):
+   - **Priors:** wider and narrower priors on key parameters (C.4), alternative elicitation sources, alternative random-effect or shrinkage priors (A.3).
+   - **Specification:** added or removed covariates, alternative functional forms, links, or likelihoods, alternative dependence structures.
+   - **Settings and inputs:** scaling choices, trimming rules, crosswalks, alternative input datasets or versions.
+   - **Algorithm:** a different sampler, parameterization, or approximation where the result could depend on it.
+   - **Architecture:** a structurally different model. Declared and labelled as a different model, not as a perturbation of the main one.
+2. **One declared change per variant.** Each variant differs from the main model only by its declared change, which the production script enforces. Where several choices are changed together, the variant says so, and its effect cannot be attributed to one of them.
+3. **The variant set is fixed before results are seen, and all variants are reported.** Variants are not added, dropped, or modified because of their results. A variant added after results were seen is reported as added later, with the reason. Selecting the main specification among the variants after seeing results is a specification search, and is reported as such (`data-integrity.md`, Principle 2).
+4. **Every variant meets the same standards as the main model.** Convergence and efficiency (C.1, C.2), predictive checks (C.3), and prior–posterior checks (C.4) apply to every variant. A variant beyond a hard limit (C.1) has no reported estimates; it is reported as failed, with its diagnostics, and its question stays open.
+5. **Reading the variants.**
+   - Compare key estimands and derived quantities across variants on the scale of the conclusions: posterior intervals, $p_d$, and ROPE results (D.1, D.2), not only point estimates.
+   - A conclusion is robust to a choice when its direction and relevance hold across the variants for that choice. Report when it does not, and which choice it depends on.
+   - Variants are not posterior draws. Their spread is not parameter uncertainty and is not pooled with it. Combining variants (e.g. model averaging or stacking) is a declared method of its own, with its weights reported.
+   - Predictive comparisons between variants use the measures of C.3 ($\Delta\widehat{\text{elpd}}$ with its standard error), on the same data.

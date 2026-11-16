@@ -161,7 +161,17 @@ run_act4cap_swat_postprocess <- function(model,
 
   lu_dt <- read_cell_tabular_data(lu_file, nrows = fifelse(is_trial, 2000L, Inf))
   for (col in c('times', 'time')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'year', skip_absent = TRUE)
-  for (col in c('value', 'area_km2', 'area')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'crp_area_km2', skip_absent = TRUE)
+  for (col in c('value', 'area_km2', 'area')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'cell_area_km2', skip_absent = TRUE)
+  
+  # Separate agricultural cropland from total land area for agricultural nutrient/sediment loadings
+  # AgMIP / CASCADE cropland classes match ^(crp|ara)
+  crop_col <- if ("class" %in% names(lu_dt)) "class" else if ("category" %in% names(lu_dt)) "category" else if ("to_class" %in% names(lu_dt)) "to_class" else NULL
+  if (!is.null(crop_col)) {
+    lu_dt[, is_crop := grepl("^(crp|ara)", tolower(get(crop_col)))]
+    lu_dt[, crp_area_km2 := fifelse(is_crop, cell_area_km2, 0.0)]
+  } else {
+    lu_dt[, crp_area_km2 := cell_area_km2]
+  }
 
   cli_alert_info('Preparing {nrow(lu_dt)} spatial land use units for SWAT+ European catchment simulation...')
 
@@ -407,61 +417,94 @@ run_act4cap_swat_postprocess <- function(model,
   }
 
   cli_alert_info('Ingesting authentic SWAT+ catchment water balance and nutrient tables from {basename(target_txtinout)}...')
-  wb_dt <- fread(wb_file, fill = TRUE)
-  nb_dt <- fread(nb_file, fill = TRUE)
-  ls_dt <- fread(ls_file, fill = TRUE)
+  
+  # SWAT+ CSV reader that handles line 1 (run title) and line 3 (units row)
+  read_swat_csv <- function(file_path) {
+    if (!file.exists(file_path)) return(NULL)
+    raw_lines <- readLines(file_path, warn = FALSE)
+    if (length(raw_lines) < 4) return(NULL)
+    col_names <- trimws(strsplit(raw_lines[2], ",")[[1]])
+    col_names <- gsub("[^A-Za-z0-9_]", "", tolower(col_names))
+    data_lines <- raw_lines[-c(1, 2, 3)]
+    # Drop empty or unit-only rows if any remain
+    data_lines <- data_lines[grepl("[0-9]", data_lines)]
+    if (length(data_lines) == 0) return(NULL)
+    dt <- fread(text = paste(c(paste(col_names, collapse = ","), data_lines), collapse = "\n"), fill = TRUE)
+    # Convert numeric fields
+    for (nm in names(dt)) {
+      if (nm %in% c("name", "gis_id", "unit")) next
+      if (!is.numeric(dt[[nm]])) dt[, (nm) := suppressWarnings(as.numeric(get(nm)))]
+    }
+    dt
+  }
 
-  # Standardize SWAT+ table column names
-  setnames(wb_dt, tolower(names(wb_dt)))
-  setnames(nb_dt, tolower(names(nb_dt)))
-  setnames(ls_dt, tolower(names(ls_dt)))
+  wb_dt <- read_swat_csv(wb_file)
+  nb_dt <- read_swat_csv(nb_file)
+  ls_dt <- read_swat_csv(ls_file)
 
-  # Extract authentic SWAT+ catchment response metrics
-  # surq: surface runoff (mm), flo: water yield (mm), et: evapotranspiration (mm), precip: precipitation (mm)
-  # no3_gw: nitrate leaching to groundwater (kg/ha), no3_surq: nitrate runoff (kg/ha)
-  # p_sol: soluble mineral phosphorus runoff (kg/ha), sed: sediment yield (t/ha)
-  surq_val <- if ('surq' %in% names(wb_dt)) mean(wb_dt$surq, na.rm = TRUE) else 65.0
-  precip_val <- if ('precip' %in% names(wb_dt)) mean(wb_dt$precip, na.rm = TRUE) else 750.0
-  flo_val <- if ('flo' %in% names(wb_dt)) mean(wb_dt$flo, na.rm = TRUE) else if ('water_yield' %in% names(wb_dt)) mean(wb_dt$water_yield, na.rm = TRUE) else 240.0
-  n_leach_val <- if ('no3_gw' %in% names(ls_dt)) mean(ls_dt$no3_gw, na.rm = TRUE) else if ('no3_gw' %in% names(nb_dt)) mean(nb_dt$no3_gw, na.rm = TRUE) else 18.5
-  p_runoff_val <- if ('p_sol' %in% names(ls_dt)) mean(ls_dt$p_sol, na.rm = TRUE) else if ('minp' %in% names(nb_dt)) mean(nb_dt$minp, na.rm = TRUE) else 1.25
-  sed_val <- if ('sed' %in% names(ls_dt)) mean(ls_dt$sed, na.rm = TRUE) else 1.15
+  if (is.null(wb_dt) || nrow(wb_dt) == 0) {
+    stop(cli::format_error(c("x" = "Failed to parse authentic SWAT+ water balance table: {basename(wb_file)}")))
+  }
 
-  runoff_ratio <- if (precip_val > 0) round(surq_val / precip_val, 3) else 0.25
+  # Extract authentic SWAT+ catchment response metrics from actual simulation columns:
+  # surq_gen / latq / wateryld / perc / et in basin_wb
+  # sedyld / surqno3 / lat3no3 / tileno3 / surqsolp / lchlabp in basin_ls
+  # fertn / fertp in basin_nb
+  surq_val <- if (!is.null(wb_dt) && "surq_gen" %in% names(wb_dt)) mean(wb_dt$surq_gen, na.rm = TRUE) else if (!is.null(wb_dt) && "surq" %in% names(wb_dt)) mean(wb_dt$surq, na.rm = TRUE) else 0.0
+  precip_val <- if (!is.null(wb_dt) && "precip" %in% names(wb_dt)) mean(wb_dt$precip, na.rm = TRUE) else 0.0
+  flo_val <- if (!is.null(wb_dt) && "wateryld" %in% names(wb_dt)) mean(wb_dt$wateryld, na.rm = TRUE) else if (!is.null(wb_dt) && "flo" %in% names(wb_dt)) mean(wb_dt$flo, na.rm = TRUE) else 0.0
+  
+  # N leaching = nitrate in percolation/lateral + groundwater
+  n_leach_val <- if (!is.null(ls_dt) && "lat3no3" %in% names(ls_dt) && "surqno3" %in% names(ls_dt)) {
+    mean(ls_dt$lat3no3 + ls_dt$surqno3 + if ("tileno3" %in% names(ls_dt)) ls_dt$tileno3 else 0, na.rm = TRUE)
+  } else if (!is.null(ls_dt) && "no3_gw" %in% names(ls_dt)) {
+    mean(ls_dt$no3_gw, na.rm = TRUE)
+  } else 0.0
 
-  cli_alert_success('Authentic SWAT+ Basin Responses: Runoff Ratio={runoff_ratio}, Water Yield={round(flo_val, 1)} mm, N Leaching={round(n_leach_val, 2)} kg/ha, P Runoff={round(p_runoff_val, 2)} kg/ha, Sediment={round(sed_val, 2)} t/ha')
+  # P runoff = soluble P + labile/tile P
+  p_runoff_val <- if (!is.null(ls_dt) && "surqsolp" %in% names(ls_dt) && "lchlabp" %in% names(ls_dt)) {
+    mean(ls_dt$surqsolp + ls_dt$lchlabp, na.rm = TRUE)
+  } else if (!is.null(ls_dt) && "p_sol" %in% names(ls_dt)) {
+    mean(ls_dt$p_sol, na.rm = TRUE)
+  } else 0.0
+
+  # Sediment yield (t/ha)
+  sed_val <- if (!is.null(ls_dt) && "sedyld" %in% names(ls_dt)) mean(ls_dt$sedyld, na.rm = TRUE) else if (!is.null(ls_dt) && "sed" %in% names(ls_dt)) mean(ls_dt$sed, na.rm = TRUE) else 0.0
+
+  runoff_ratio <- if (precip_val > 0) round(surq_val / precip_val, 4) else 0.0
+
+  cli_alert_success('Authentic SWAT+ Basin Responses: Precip={round(precip_val, 1)} mm, Runoff Ratio={runoff_ratio}, Water Yield={round(flo_val, 1)} mm, N Loss={round(n_leach_val, 3)} kg/ha, P Loss={round(p_runoff_val, 4)} kg/ha, Sediment={round(sed_val, 4)} t/ha')
 
   # 5. Synthesize Regional Summary Table Anchored on Authentic Model Outputs
   # If HRU-level authentic outputs exist, compute mass balances anchored directly on HRU simulation tables
   if (file.exists(hru_ls_file) && file.exists(hru_wb_file)) {
     cli_alert_info('Parsing authentic HRU-level simulation outputs from {basename(hru_ls_file)} and {basename(hru_wb_file)}...')
-    hru_ls_dt <- fread(hru_ls_file, fill = TRUE)
-    hru_wb_dt <- fread(hru_wb_file, fill = TRUE)
-    setnames(hru_ls_dt, tolower(names(hru_ls_dt)))
-    setnames(hru_wb_dt, tolower(names(hru_wb_dt)))
+    hru_ls_dt <- read_swat_csv(hru_ls_file)
+    hru_wb_dt <- read_swat_csv(hru_wb_file)
     
-    if ('no3_gw' %in% names(hru_ls_dt)) {
-      n_hru <- mean(hru_ls_dt$no3_gw, na.rm = TRUE)
+    if (!is.null(hru_ls_dt) && "surqno3" %in% names(hru_ls_dt) && "lat3no3" %in% names(hru_ls_dt)) {
+      n_hru <- mean(hru_ls_dt$surqno3 + hru_ls_dt$lat3no3 + if ("tileno3" %in% names(hru_ls_dt)) hru_ls_dt$tileno3 else 0, na.rm = TRUE)
       if (is.finite(n_hru) && n_hru > 0) n_leach_val <- n_hru
     }
-    if ('p_sol' %in% names(hru_ls_dt)) {
-      p_hru <- mean(hru_ls_dt$p_sol, na.rm = TRUE)
+    if (!is.null(hru_ls_dt) && "surqsolp" %in% names(hru_ls_dt) && "lchlabp" %in% names(hru_ls_dt)) {
+      p_hru <- mean(hru_ls_dt$surqsolp + hru_ls_dt$lchlabp, na.rm = TRUE)
       if (is.finite(p_hru) && p_hru > 0) p_runoff_val <- p_hru
     }
-    if ('sed' %in% names(hru_ls_dt)) {
-      sed_hru <- mean(hru_ls_dt$sed, na.rm = TRUE)
+    if (!is.null(hru_ls_dt) && "sedyld" %in% names(hru_ls_dt)) {
+      sed_hru <- mean(hru_ls_dt$sedyld, na.rm = TRUE)
       if (is.finite(sed_hru) && sed_hru > 0) sed_val <- sed_hru
     }
-    if ('flo' %in% names(hru_wb_dt)) {
-      flo_hru <- mean(hru_wb_dt$flo, na.rm = TRUE)
+    if (!is.null(hru_wb_dt) && "wateryld" %in% names(hru_wb_dt)) {
+      flo_hru <- mean(hru_wb_dt$wateryld, na.rm = TRUE)
       if (is.finite(flo_hru) && flo_hru > 0) flo_val <- flo_hru
     }
   }
 
   swat_summary <- lu_dt[, .(
-    total_area_km2        = round(sum(crp_area_km2, na.rm = TRUE), 2),
+    total_area_km2        = round(sum(cell_area_km2, na.rm = TRUE), 2),
+    cropland_area_km2     = round(sum(crp_area_km2, na.rm = TRUE), 2),
     mean_runoff_coef      = runoff_ratio,
-    total_water_yield_mcm = round(sum(crp_area_km2, na.rm = TRUE) * flo_val * 0.001, 2),
+    total_water_yield_mcm = round(sum(cell_area_km2, na.rm = TRUE) * flo_val * 0.001, 2),
     total_n_leaching_tons = round(sum(crp_area_km2, na.rm = TRUE) * 100 * n_leach_val / 1000, 2),
     total_p_runoff_tons   = round(sum(crp_area_km2, na.rm = TRUE) * 100 * p_runoff_val / 1000, 2),
     total_sediment_ktons  = round(sum(crp_area_km2, na.rm = TRUE) * 100 * sed_val / 1000, 2)
@@ -482,12 +525,13 @@ run_act4cap_swat_postprocess <- function(model,
   tifs <- character(0)
   if ('ns' %in% names(lu_dt)) {
     cell_swat <- lu_dt[, .(
-      total_area_km2 = round(sum(crp_area_km2, na.rm = TRUE), 2),
-      runoff_coef    = runoff_ratio,
-      n_leach_kg_ha  = round(n_leach_val, 2),
-      p_runoff_kg_ha = round(p_runoff_val, 2),
-      sediment_t_ha  = round(sed_val, 2),
-      water_yield_mm = round(flo_val, 2)
+      total_area_km2    = round(sum(cell_area_km2, na.rm = TRUE), 2),
+      cropland_area_km2 = round(sum(crp_area_km2, na.rm = TRUE), 2),
+      runoff_coef       = runoff_ratio,
+      n_leach_kg_ha     = round(n_leach_val, 3),
+      p_runoff_kg_ha    = round(p_runoff_val, 4),
+      sediment_t_ha     = round(sed_val, 4),
+      water_yield_mm    = round(flo_val, 2)
     ), by = .(ns, Ns_reg, year)]
 
     cell_parquet <- target_cell_parquet

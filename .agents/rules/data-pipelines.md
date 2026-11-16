@@ -9,9 +9,10 @@ paths:
   - "src/**/*.{R,py}"
   - "R/**/*.R"
   - "**/config*.{R,py,yaml,yml,toml}"
+  - "**/PIPELINE_LINEAGE*.md"
 # Antigravity Model Decision Trigger:
 trigger: model_decision
-description: "Data processing and pipeline consistency: stage contracts, joins and keys, conservation ledgers, single source of truth, no silent fallbacks in critical steps (identifier resolution, year/scenario selection, joins, units, totals), error handling, idempotent outputs, run manifests, testing, scale and performance (deterministic chunking, parallel seeds, bounded memory), versioned releases, and protection against double counting (run-scoped intermediates, resolved inputs, expected-count and uniqueness assertions before aggregation, control totals) in multi-stage data pipelines."
+description: "Data processing and pipeline consistency: stage contracts, joins and keys, conservation ledgers, single source of truth, no silent fallbacks in critical steps (identifier resolution, year/scenario selection, joins, units, totals), error handling, idempotent outputs, run manifests, testing, scale and performance (deterministic chunking, parallel seeds, bounded memory), versioned releases, protection against double counting (run-scoped intermediates, resolved inputs, expected-count and uniqueness assertions before aggregation, control totals), pipeline lineage (PIPELINE_LINEAGE.md tracing which models, repositories, datasets, caches and side-loads are effectively called, versus planned), and production runs (one production script and run ID for the main model and its declared variants, variant table, enforced configuration differences, no partial reruns) in multi-stage data pipelines."
 ---
 
 # Data Processing & Pipeline Consistency Rulebook
@@ -64,6 +65,9 @@ A fallback replaces the requested input or behaviour with something else when th
    | Lags built as `year + step` with an assumed step | Irregular periods pair with nothing | Pair by position in the ordered period list; assert an expected step if one is known |
    | R's partial matching of `$` names | Works until a second similar name appears | Exact names |
    | Collecting inputs by globbing a shared directory (`list.files(temp, "^prefix_.*")`) | Picks up files from earlier runs, which are then summed (double, triple counting) | Resolve inputs from the run manifest or by explicit run ID, and assert the expected count (Principle 13) |
+   | "Newest file" or "latest run directory" selection (`tail(sort(dirs), 1)`, maximum modification time) | Picks another run when the current one is incomplete, or when a later or parallel run exists | Pass the run ID explicitly; stop if it is missing (Principle 13) |
+   | A wildcard for the run date or version inside an otherwise anchored pattern (`_[0-9]{8}_lu_`) | Still matches every run in the directory: a glob in disguise | Build the exact name from the run ID with the producer's naming function |
+   | Aggregating whatever inputs were found when expected ones are missing | A partial total looks complete | Stop and list the missing keys; partial aggregation only as a configured option, flagged in the outputs |
    | `if (length(a) > 0) a else b` to choose between two input locations | Silently switches the source of a quantity between runs | Configure one source; if both exist, verify that they agree |
    | `install.packages()` or downloads during a run | Run depends on network and current package versions | Declared dependencies (`renv`, lock files) |
    | Hard-coded user or drive paths as fallbacks (`P:/...`, `/Users/...`) | Works on one machine, silently wrong elsewhere | Configured data roots |
@@ -97,7 +101,7 @@ A fallback replaces the requested input or behaviour with something else when th
 1. **One implementation per function.** No shadow copies that override a package function depending on sourcing order. A performance or behaviour change goes into the canonical implementation.
 2. **One definition per default and constant,** in the configuration. Magic numbers in scripts are named and documented.
 3. **Shared steps are shared code.** When several pipelines perform the same step (harmonization, period pairing, relabelling), they call the same helper. Legitimate differences are configuration parameters, not divergent copies.
-4. **Dependencies are pinned** (submodule commits, lock files), and the version that actually ran is recorded.
+4. **Dependencies are pinned** (submodule commits, lock files), and the version that actually ran is recorded. A pinned commit must be reachable from the dependency's main or release branch: a pin to a feature-branch commit silently depends on code that the dependency's main does not have, and is lost on the next bump.
 
 ---
 
@@ -139,6 +143,8 @@ A fallback replaces the requested input or behaviour with something else when th
    - every fallback taken, and every threshold-based removal with its size;
    - start/end time and machine.
 3. **Caches and intermediates are keyed by content and code version,** so that a changed input or a fixed bug invalidates them.
+4. **The manifest is the evidence for `PIPELINE_LINEAGE.md`** (Principle 14): what it records is what was effectively used.
+5. **Production runs record their variants.** For a production run (Principle 15), the manifest holds the run ID, the variant table, and per variant its resolved configuration, so that the declared changes can be checked.
 
 ---
 
@@ -173,12 +179,15 @@ A fallback replaces the requested input or behaviour with something else when th
    - a README describing contents, units, and known limitations;
    - the licence, and a checksum file for all files.
 4. **Reproducible from the repository:** the release records the code versions and configuration it was produced with, so it can be regenerated.
+5. **A release is one production run** (Principle 15): the main specification and its declared variants, from one run ID. Outputs of different runs are not combined into one release.
 
 ---
 
 ## Principle 13: Input Discovery, Run Isolation & No Double Counting
 
 **The failure mode:** a post-processing step collects its inputs with a file pattern over a shared temporary directory, e.g. every file matching `^production_downscaled_.*\.qs$`. Each run adds its own files there. The second run therefore loads its own files *and* the first run's, and an aggregation by `(pixel, scenario, indicator)` sums them. Every total doubles, then triples with the third run. Quantities loaded from a run-specific directory are not affected, so the totals stay plausible-looking, ratios such as €/ha are inflated, and nothing fails.
+
+The same pattern also catches **other pipelines' files** that use the same prefix in a shared directory, and **format twins** of one dataset (the `.parquet` and the `.csv` copy of the same scenario). A date wildcard in the pattern (`_[0-9]{8}_`) does not help: it matches every run. And when the step finds fewer files than expected, it aggregates whatever is there, so partial totals look complete as well.
 
 No single check prevents this reliably. Apply all of the following layers.
 
@@ -190,11 +199,14 @@ No single check prevents this reliably. Apply all of the following layers.
 2. **Inputs are resolved, not discovered.**
    - A consuming stage takes the exact list of input files from the producing stage's manifest (Principle 9), or from a resolver called with the explicit run ID and the expected keys (scenario, chunk, period).
    - Collecting inputs by globbing a directory is forbidden for shared locations.
-   - Where a pattern is unavoidable, anchor it on the full identity of the file, e.g. `^production_downscaled_<scenario>_.*_<run_id>\.qs$`, never on a prefix alone.
-3. **The run ID is required.** It is passed to the stage explicitly. If it is missing, the stage stops. It is never derived silently from a fallback such as `if (exists("run_date")) ... else <parse it from a path>` (Principle 2).
+   - Where a pattern is unavoidable, anchor it on the full identity of the file, e.g. `^production_downscaled_<scenario>_.*_<run_id>\.qs$`, never on a prefix alone. A wildcard for the run ID or date is not an anchor.
+   - **Producer and consumer use one naming function.** The function that builds the file name when writing is the one that builds it when reading, so the two cannot drift apart.
+   - **Names carry their namespace.** Where a directory is shared across pipelines or projects, the pipeline or project name is part of every file name, so equal prefixes from different pipelines cannot collide.
+3. **The run ID is required.** It is passed to the stage explicitly. If it is missing, the stage stops. It is never derived silently from a fallback such as `if (exists("run_date")) ... else <parse it from a path>`, nor from "the newest file" or "the latest run directory" (Principle 2). The output directory a stage writes to is checked to belong to that run ID.
 4. **Assert the expected inputs.**
    - The number of input files equals the expected number (e.g. scenarios × chunks, from the manifest or the configuration), and every expected key is present exactly once.
-   - On a mismatch, stop and list the missing and the unexpected files by name.
+   - On a mismatch, stop and list the missing and the unexpected files by name. Aggregating the subset that happens to exist is never a silent default; if partial results are needed, it is a configured option, and the outputs say which keys are missing.
+   - **One physical copy per logical input.** When a stage writes the same data in several formats (e.g. `.qs` and `.csv`, `.parquet` and `.csv`), the consumer reads exactly one copy per key, chosen by a fixed, configured preference. A pattern that can match both copies is forbidden. A fallback to the second copy is logged per key (Principle 2).
    - Do not silently prefer one location over another (e.g. temporary vs. output directory). Configure the source, or, if both exist, check that they agree.
 5. **Tag every row with its source on load:** file name, run ID, and version. Before combining, assert that the data come from a single run ID, or from exactly the configured set of runs. Keep these columns until the aggregation is complete.
 6. **Guard every aggregation.**
@@ -205,11 +217,80 @@ No single check prevents this reliably. Apply all of the following layers.
    - The producing stage writes control totals (e.g. per indicator and scenario) to its manifest.
    - The consuming stage recomputes them after loading and compares them with a relative tolerance (Principle 4).
    - A ratio close to 2, 3, or another integer, against the producer's totals or against the previous run, is the signature of duplication.
+   - **Signed quantities** (profit, net flows, changes) can cancel, so a signed total may hide a duplication or flag a false one. Compare absolute sums, or the positive and negative parts separately.
+   - **Subsets are bounded.** Where a stage filters (e.g. to one country or one land-use group), the retained absolute total can never exceed the producer's. A ratio above 1 stops the stage.
 8. **Consistent provenance in combined quantities.** When quantities are combined into ratios or shares (e.g. € per ha, loss per area), assert that all inputs come from the same run. Inputs from different sources or runs can produce a wrong ratio even when each total looks plausible on its own.
 9. **External plausibility anchors.**
    - Compare headline aggregates with an independent reference (official statistics, the previous release) and report the deviation.
    - A large jump between runs without a code or configuration change that explains it blocks publication until it is explained.
-10. **Regression test:** a fixture directory that also contains files from an older run and a duplicated chunk. The test asserts that they are excluded, and that the count and uniqueness checks fire.
+10. **Regression test:** a fixture directory that also contains files from an older run, a file of another pipeline with the same prefix, a format twin, and a duplicated chunk. The test asserts that they are excluded, that the totals equal the current run's inputs, and that the count, uniqueness, and run-context checks fire. Run it once against the old code too, and record the multiplier it produced (Principle 10).
+
+---
+
+## Principle 14: Pipeline Lineage (`PIPELINE_LINEAGE.md`): What Is Effectively Called
+
+Configuration files, READMEs, and plans say what a pipeline is *meant* to use. What it actually uses can differ: a fallback picks another file, a dev checkout of an engine is loaded instead of the pinned version, a script is sourced from a sibling repository, a cached intermediate from an earlier run is reused, a hard-coded network path wins over the configured one. Every pipeline therefore keeps a `PIPELINE_LINEAGE.md` that records which models, repositories, and exogenous datasets are **effectively** called or side-loaded, stage by stage.
+
+1. **"Effectively" means traced, not planned.**
+   - Every entry is backed by evidence from a real run: the resolved path, package location, commit, or checksum as logged during that run (Principle 9 manifest, I/O trace, run log).
+   - Configuration, documentation, code reading, and intentions are not evidence of what ran. They go in the "planned" column (item 4), not in the "effective" one.
+   - An entry that has not been traced is marked **unverified**, never filled in from what the code should do. This applies to agents in particular: do not write lineage entries from memory or from a plan.
+2. **What is recorded.** Everything that enters the computation from outside the stage's own code:
+   - **Models and engines:** estimation and downscaling engines, macro-model outputs, solvers. Record the package or binary actually loaded, its location (installed library vs. development checkout vs. vendored copy) and version or commit.
+   - **Repositories and code:** submodules, vendored copies, and any code sourced or imported from outside the repository, with the resolved path and commit.
+   - **Exogenous datasets:** files, databases, APIs, network drives. Record the resolved path or URL, version, checksum or size and modification time, and rows/extent read. Link the dataset's source card (data-integrity rulebook).
+   - **Reused intermediates and caches:** which cached file was read, and which run produced it.
+   - **Environment:** environment variables, working-directory–relative paths, and machine-specific roots that changed what was read.
+3. **Side-loads are made visible.** A side-load is any input that does not come through the declared configuration or dependency list. Examples:
+   - `source()` / `import` of a script by a path outside the repository;
+   - `if (file.exists(a)) a else b` location fallbacks, and environment-variable overrides of data roots;
+   - `load_all()` of a development checkout where an installed, pinned package is declared;
+   - a globbed or "latest file" input (Principle 13);
+   - defaults hard-coded in scripts that bypass the configuration.
+
+   Each side-load gets its own row, flagged as such. It is either declared in the configuration, or removed.
+4. **Format.** One table per stage, plus a header with the date, pipeline commit, and the reference run ID the trace comes from:
+
+   | Stage | Component | Kind (model / repo / dataset / cache / env) | Effective source (resolved path, URL, package location) | Version / commit / checksum | How loaded (package, submodule, `source()`, side-load, fallback, cache) | Evidence (run ID, manifest or log line) | Planned source (configuration / docs) | Match |
+   | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+
+   A mismatch between the effective and the planned source is a finding: fix the pipeline, or update the configuration and documentation, with a reason.
+5. **How to trace.**
+   - Route reads through a small set of I/O helpers that log the resolved path, size, modification time, and checksum (or rows read) to the run manifest. Direct reads that bypass them are themselves a side-load.
+   - Log package loading (name, version, library path or development path, commit) and every sourced or imported external file.
+   - Where helpers cannot cover everything, check with a language- or OS-level trace of file opens on a reference run, and compare it with the document.
+   - Configuration variants and conditional branches get their own entries. Branches the reference run did not exercise are marked **not traced**.
+6. **Verification, not authorship.**
+   - Regenerate or re-verify the document against a fresh reference run whenever a stage's inputs, a dependency, or a data root changes, and before every release (Principle 12).
+   - The check fails on an effective input missing from the document, and on a documented input that was not effectively used.
+   - The document is versioned with the code; each verification records its date and run ID.
+7. **Relationship to other records.** The run manifest (Principle 9) is the raw per-run evidence. `PIPELINE_LINEAGE.md` is the curated, cross-stage view verified against it. Source cards (data-integrity rulebook) describe each dataset, and `MODEL_LINEAGE.md` (statistical rulebook) describes the mathematical transformations. The lineage links to both rather than repeating them.
+
+---
+
+## Principle 15: Production Runs & Declared Variants
+
+Results that are reported together, typically a main model and its robustness or sensitivity variants, are produced together, by one **production run**. This principle defines the mechanics. What variants to run, and how to read them, is in the statistical rulebook (D.4); how documents use them is in the reporting rulebook (Principle 2).
+
+1. **One production script, one run.**
+   - A production script runs the main specification and every declared variant. It is the only entry point for results that are released or reported.
+   - The run has one run ID. Each variant has a variant ID; the main specification is the variant `main`.
+   - All variants share the code commit(s) of the pipeline and every engine, the input-data versions, and everything in the configuration that is not declared as a change.
+2. **The variant table is part of the manifest** (Principle 9). One row per variant: variant ID, the changed setting, main value → variant value, the kind of change (prior, setting, input, algorithm, or architecture), and its purpose. Architecture changes (a different model structure) are allowed, and labelled as such. For example:
+
+   | variant_id | Changed setting | Main value → variant value | Kind | Purpose |
+   | :--- | :--- | :--- | :--- | :--- |
+   | `prior_wide` | prior scale on β | 1 → 2.5 | prior | prior sensitivity |
+   | `alt_mask` | policy mask source | A → B | input | data robustness |
+   | `no_spatial` | spatial random effect | on → off | architecture | structural robustness |
+3. **Declared changes are enforced.** Before estimation, the production script resolves the full configuration and specification of every variant and compares it with `main`. The difference must equal the declared change. Any other difference stops the run, and the message lists the undeclared differences.
+4. **Every variant is a complete, isolated run of the pipeline.** Each writes its outputs, manifest entries, and pipeline lineage (Principle 14) under its variant ID, in run-scoped storage (Principle 13). File names and keys carry both IDs, so outputs of different variants can never be combined by accident.
+5. **Variants may run as separate jobs.** Expensive variants may run on other machines, in other jobs, or at other times, as long as the same production script launches them with the same code commit, configuration, and inputs. At assembly, the manifests are checked: same run ID, same commit and input versions, declared changes only. A variant whose manifest does not match does not join the run.
+6. **No partial reruns.**
+   - A change of code, input, or configuration produces a new run of the production script, for `main` and all variants, with a new run ID.
+   - Rerunning a single variant or a single stage later, under changed code or inputs, and merging it into an existing run is forbidden. Either rerun through the production script, or treat the result as a separate run.
+   - Every output downstream of a rerun stage is regenerated; caches are keyed by run and variant ID.
+7. **The variant set is fixed before results are seen.** The production script declares the variants up front. Variants added later are marked as added later, with the reason, and all declared variants are kept in the outputs, including failed ones (statistical rulebook D.4; data-integrity rulebook, Principle 2).
 
 ---
 
@@ -220,12 +301,14 @@ Before a pipeline change is merged or a run is published:
 - [ ] **Contracts:** every changed stage checks its inputs and outputs (schema, keys, domain, invariants).
 - [ ] **Fallbacks:** no new silent fallback at a critical point; every fallback is configured, logged, bounded, and in the manifest.
 - [ ] **Joins:** keys explicit, cardinality asserted, unmatched rows reported on both sides.
-- [ ] **No double counting:** run-scoped intermediates; inputs resolved from the manifest or by explicit run ID (no globbing of shared directories); expected file count asserted; single run ID and key uniqueness asserted before every aggregation; control totals reconciled; combined quantities from the same run.
+- [ ] **No double counting:** run-scoped intermediates; one naming function shared by producer and consumer, with pipeline namespace; inputs resolved from the manifest or by explicit run ID (no globbing of shared directories, no date wildcards, no "latest" heuristics); expected inputs asserted, missing keys stop the stage; one copy per logical input (no format twins); single run ID and key uniqueness asserted before every aggregation; control totals reconciled on absolute values, subsets bounded by the producer; combined quantities from the same run.
 - [ ] **Ledger:** conserved totals reconciled stage by stage; every difference explained; tolerances relative.
 - [ ] **Single source:** no duplicated implementations or defaults; shared steps use shared helpers.
 - [ ] **State:** no in-place mutation of caller data; results independent of sourcing order.
 - [ ] **Outputs:** idempotent, atomic, one schema per file, no leftovers from earlier runs.
 - [ ] **Manifest:** code versions, resolved configuration, input checksums, and fallbacks recorded.
+- [ ] **Pipeline lineage:** `PIPELINE_LINEAGE.md` verified against a reference run of this change: every effectively called model, repository, dataset, cache, and side-load listed with its resolved source and version; no effective input undocumented, no documented input unused; planned-vs-effective mismatches resolved.
 - [ ] **Tests:** fixtures for the changed stages; a regression test for each fixed bug.
 - [ ] **Scale:** deterministic chunking, results independent of the number of workers and chunk size, per-chunk seeds, bounded memory.
-- [ ] **Releases:** versioned and immutable, citable, complete bundle with checksums.
+- [ ] **Production run:** main and variants from one production script and run ID; variant table in the manifest; resolved configurations differ from `main` only by the declared changes; separate jobs checked at assembly; no partial reruns merged into a run.
+- [ ] **Releases:** versioned and immutable, citable, complete bundle with checksums; one production run per release.

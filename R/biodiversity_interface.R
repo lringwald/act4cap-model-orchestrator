@@ -208,11 +208,24 @@ run_act4cap_biodiversity_postprocess <- function(model,
     )
   }
 
+  # 3b. Load Master Grid SimUID Bridge to accurately map EEA grid cells (ns) to SimUID
+  simu_bridge <- load_master_simuid_bridge(resolution = resolution, gamble_dir = gamble_dir)
+
   fshare_file <- file.path(bio_dir, 'Input', 'forest_share.RData')
   forest_share_dt <- if (file.exists(fshare_file)) {
     f_raw <- as.data.table(readRDS(fshare_file))
-    setnames(f_raw, 'SimUID', 'ns', skip_absent = TRUE)
-    f_raw[, .(ns = as.character(ns), forest_share, nonforest_share)]
+    if (!is.null(simu_bridge)) {
+      # Spatially bridge SimUID -> EEA grid cell (ns) via area weights
+      f_bridged <- merge(simu_bridge, f_raw, by = 'SimUID')
+      f_cell <- f_bridged[, .(
+        forest_share    = sum(forest_share * simu_weight, na.rm = TRUE) / pmax(1e-6, sum(simu_weight, na.rm = TRUE)),
+        nonforest_share = sum(nonforest_share * simu_weight, na.rm = TRUE) / pmax(1e-6, sum(simu_weight, na.rm = TRUE))
+      ), by = ns]
+      f_cell
+    } else {
+      setnames(f_raw, 'SimUID', 'ns', skip_absent = TRUE)
+      f_raw[, .(ns = as.character(ns), forest_share, nonforest_share)]
+    }
   } else NULL
 
   psl_file <- file.path(bio_dir, 'Input', 'PSLglobal_extended.RData')
@@ -232,8 +245,16 @@ run_act4cap_biodiversity_postprocess <- function(model,
 
   eco_map_dt <- if (file.exists(eco_file)) {
     eco_raw <- as.data.table(readRDS(eco_file))
-    setnames(eco_raw, 'SimUID', 'ns', skip_absent = TRUE)
-    eco_raw[, .(ns = as.character(ns), ecoregion, simu_share_in_eco)]
+    if (!is.null(simu_bridge)) {
+      eco_bridged <- merge(simu_bridge, eco_raw, by = 'SimUID', allow.cartesian = TRUE)
+      eco_cell <- eco_bridged[, .(
+        simu_share_in_eco = sum(simu_share_in_eco * simu_weight, na.rm = TRUE)
+      ), by = .(ns, ecoregion)]
+      eco_cell
+    } else {
+      setnames(eco_raw, 'SimUID', 'ns', skip_absent = TRUE)
+      eco_raw[, .(ns = as.character(ns), ecoregion, simu_share_in_eco)]
+    }
   } else NULL
 
   # 4. Compute Authentic BII with Biome Weighting
@@ -258,7 +279,8 @@ run_act4cap_biodiversity_postprocess <- function(model,
   }
 
   # 5. Compute Authentic cSAR16 Committed Extinctions (Leclere et al. 2020)
-  # Formula: extinctions = area_km2 * simu_share_in_eco * (CF / 1000)
+  # Area in 1000 ha: 1 km2 = 100 ha = 0.1 * 1000 ha (so value_1000ha = crp_area_km2 / 10.0)
+  # extinctions = (crp_area_km2 / 10.0) * simu_share_in_eco * (CF / 1000)
   if (!is.null(csar_cf_long)) {
     if (!is.null(eco_map_dt) && 'ns' %in% names(bio_dt)) {
       bio_dt[, ns_str := as.character(ns)]
@@ -269,7 +291,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
       bio_dt[lc_csar %in% c('primary', 'other'), CF := 0]
       bio_dt[is.na(CF), CF := 0]
       bio_dt[, sim_share := fifelse(!is.na(simu_share_in_eco) & simu_share_in_eco > 0, simu_share_in_eco, 1.0)]
-      bio_dt[, committed_extinctions := (crp_area_km2 * sim_share * (CF / 1000))]
+      bio_dt[, committed_extinctions := ((crp_area_km2 / 10.0) * sim_share * (CF / 1000.0))]
       bio_dt[, c('ns_str', 'lc_csar_str', 'simu_share_in_eco', 'sim_share', 'CF') := NULL]
     } else {
       # Fallback to European Palearctic mean CF across ecoregions
@@ -278,7 +300,7 @@ run_act4cap_biodiversity_postprocess <- function(model,
       bio_dt <- merge(bio_dt, mean_eu_cf, by.x = 'lc_csar_str', by.y = 'lc_csar', all.x = TRUE)
       bio_dt[lc_csar %in% c('primary', 'other'), CF := 0]
       bio_dt[is.na(CF), CF := 0]
-      bio_dt[, committed_extinctions := (crp_area_km2 * (CF / 1000))]
+      bio_dt[, committed_extinctions := ((crp_area_km2 / 10.0) * (CF / 1000.0))]
       bio_dt[, c('lc_csar_str', 'CF') := NULL]
     }
   } else {
@@ -307,11 +329,12 @@ run_act4cap_biodiversity_postprocess <- function(model,
 
   # 7. Aggregate cSAR16 Committed Extinctions & Intactness Summary
   csar_summary <- bio_dt[, .(
-    total_area_km2         = round(sum(crp_area_km2, na.rm = TRUE), 2),
-    committed_extinctions  = round(sum(committed_extinctions, na.rm = TRUE), 6),
-    csar_intactness_score  = round(pmax(0, 1 - sum(committed_extinctions, na.rm = TRUE) / pmax(1, sum(crp_area_km2, na.rm = TRUE))), 4),
-    natural_habitat_km2    = round(sum(crp_area_km2[agmip_category %in% c('primary_forest', 'natural_vegetation', 'other_land')], na.rm = TRUE), 2),
-    transformed_land_km2   = round(sum(crp_area_km2[agmip_category %in% c('arable_cropland', 'built_up')], na.rm = TRUE), 2)
+    total_area_km2            = round(sum(crp_area_km2, na.rm = TRUE), 2),
+    committed_extinctions     = round(sum(committed_extinctions, na.rm = TRUE), 6),
+    extinctions_per_1000km2   = round(1000.0 * sum(committed_extinctions, na.rm = TRUE) / pmax(1.0, sum(crp_area_km2, na.rm = TRUE)), 6),
+    csar_intactness_score     = round(pmax(0, 1 - sum(committed_extinctions, na.rm = TRUE)), 6),
+    natural_habitat_km2       = round(sum(crp_area_km2[agmip_category %in% c('primary_forest', 'natural_vegetation', 'other_land')], na.rm = TRUE), 2),
+    transformed_land_km2      = round(sum(crp_area_km2[agmip_category %in% c('arable_cropland', 'built_up')], na.rm = TRUE), 2)
   ), by = .(Ns_reg, year)]
 
   csar_summary[, `:=`(
@@ -331,8 +354,8 @@ run_act4cap_biodiversity_postprocess <- function(model,
     cell_bio <- bio_dt[, .(
       total_area_km2        = round(sum(crp_area_km2, na.rm = TRUE), 2),
       bii_score             = round(weighted.mean(bii_coef, crp_area_km2, na.rm = TRUE), 4),
-      committed_extinctions = round(sum(committed_extinctions, na.rm = TRUE), 6),
-      csar_intactness       = round(pmax(0, 1 - sum(committed_extinctions, na.rm = TRUE) / pmax(1, sum(crp_area_km2, na.rm = TRUE))), 4)
+      committed_extinctions = round(sum(committed_extinctions, na.rm = TRUE), 8),
+      csar_intactness       = round(pmax(0, 1 - sum(committed_extinctions, na.rm = TRUE)), 8)
     ), by = .(ns, Ns_reg, year)]
 
     cell_parquet <- target_cell_parquet
