@@ -67,7 +67,8 @@ run_act4cap_biodiversity_postprocess <- function(model,
                                                  resolution = '10km',
                                                  run_date = NULL,
                                                  version_tag = NULL,
-                                                 macro_output = NULL) {
+                                                 macro_output = NULL,
+                                                 gamble_dir = NULL) {
   is_trial <- trial
   cli_h3('Biodiversity Link Ecological Assessment [{toupper(model)} | {scenario}]')
   cli_alert_info('Engine Path: {bio_dir} (Mode: {toupper(postmodel_mode)})')

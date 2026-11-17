@@ -325,7 +325,8 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       resolution = RESOLUTION,
       run_date = RUN_DATE,
       version_tag = VERSION_TAG,
-      macro_output = m_macro_name
+      macro_output = m_macro_name,
+      gamble_dir = gamble_dir_resolved
     )
   }
   
@@ -346,7 +347,8 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       resolution = RESOLUTION,
       run_date = RUN_DATE,
       version_tag = VERSION_TAG,
-      macro_output = m_macro_name
+      macro_output = m_macro_name,
+      gamble_dir = gamble_dir_resolved
     )
   }
   
@@ -366,6 +368,7 @@ run_act4cap_pipeline_job <- function(m, sc, cores = 1L) {
       run_date = RUN_DATE,
       version_tag = VERSION_TAG,
       macro_output = m_macro_name,
+      gamble_dir = gamble_dir_resolved,
       trial = TRIAL
     )
   }
