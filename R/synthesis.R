@@ -29,7 +29,9 @@ synthesize_act4cap_results <- function(model,
                                        run_date = NULL,
                                        version_tag = NULL,
                                        macro_output = NULL,
-                                       trial = FALSE) {
+                                       trial = FALSE,
+                                       gamble_dir = NULL,
+                                       ...) {
   # Resolve macro model output name / vintage
   macro_out_name <- if (!is.null(macro_output) && nzchar(macro_output)) {
     macro_output
