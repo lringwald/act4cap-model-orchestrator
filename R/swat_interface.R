@@ -162,14 +162,21 @@ run_act4cap_swat_postprocess <- function(model,
   lu_dt <- read_cell_tabular_data(lu_file, nrows = fifelse(is_trial, 2000L, Inf))
   for (col in c('times', 'time')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'year', skip_absent = TRUE)
   for (col in c('value', 'area_km2', 'area')) if (col %in% names(lu_dt)) setnames(lu_dt, col, 'cell_area_km2', skip_absent = TRUE)
+  if (!("cell_area_km2" %in% names(lu_dt))) {
+    if ("crp_area_km2" %in% names(lu_dt)) {
+      lu_dt[, cell_area_km2 := crp_area_km2]
+    } else {
+      lu_dt[, cell_area_km2 := 0.0]
+    }
+  }
   
   # Separate agricultural cropland from total land area for agricultural nutrient/sediment loadings
   # AgMIP / CASCADE cropland classes match ^(crp|ara)
-  crop_col <- if ("class" %in% names(lu_dt)) "class" else if ("category" %in% names(lu_dt)) "category" else if ("to_class" %in% names(lu_dt)) "to_class" else NULL
+  crop_col <- if ("class" %in% names(lu_dt)) "class" else if ("category" %in% names(lu_dt)) "category" else if ("to_class" %in% names(lu_dt)) "to_class" else if ("lu" %in% names(lu_dt)) "lu" else NULL
   if (!is.null(crop_col)) {
     lu_dt[, is_crop := grepl("^(crp|ara)", tolower(get(crop_col)))]
     lu_dt[, crp_area_km2 := fifelse(is_crop, cell_area_km2, 0.0)]
-  } else {
+  } else if (!("crp_area_km2" %in% names(lu_dt))) {
     lu_dt[, crp_area_km2 := cell_area_km2]
   }
 
