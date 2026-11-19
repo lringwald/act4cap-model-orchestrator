@@ -6,6 +6,7 @@
 # =============================================================================
 
 update_agent_rules <- function(repo_dir = ".") {
+  if (nzchar(Sys.getenv("SKIP_RULES_UPDATE", ""))) return(invisible(NULL))
   sh_script <- file.path(repo_dir, "tools", "update_rules.sh")
   if (file.exists(sh_script)) {
     tryCatch({

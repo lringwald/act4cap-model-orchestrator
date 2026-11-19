@@ -94,7 +94,7 @@ synthesize_act4cap_results <- function(model,
   }
 
   if (nrow(bii_dt) > 0) {
-    keep_cols <- c('Ns_reg', 'year', 'bii_overall_index', 'primary_forest_km2', 'managed_forest_km2', 'arable_cropland_km2', 'grassland_km2')
+    keep_cols <- c('Ns_reg', 'year', 'bii_overall_index', 'bii_prod_weighted', 'primary_forest_km2', 'managed_forest_km2', 'arable_cropland_km2', 'grassland_km2')
     keep_cols <- intersect(keep_cols, names(bii_dt))
     bii_sub <- bii_dt[, ..keep_cols]
     if (nrow(synth_dt) > 0) {

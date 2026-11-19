@@ -20,6 +20,38 @@ normalize_grid_resolution <- function(resolution = '10km') {
   paste0(res_num, 'km')
 }
 
+# Search for master mapping parquet across container, cluster FUSE mount, and local paths
+find_master_grid_parquet <- function(gamble_dir = NULL) {
+  # 1. Direct check if gamble_dir is provided
+  if (!is.null(gamble_dir) && nzchar(gamble_dir)) {
+    aux_d <- file.path(gamble_dir, 'data', 'aux_files')
+    if (dir.exists(aux_d)) {
+      found <- list.files(aux_d, pattern = 'one_kmID_master_mapping_.*\\.parquet$', full.names = TRUE)
+      if (length(found) > 0) return(sort(found, decreasing = TRUE)[1])
+    }
+  }
+
+  cands <- c(
+    if (nzchar(Sys.getenv('CASCADING_GAMBLE_DIR', ''))) file.path(Sys.getenv('CASCADING_GAMBLE_DIR'), 'data', 'aux_files'),
+    '/tmp/gamble-cascade-live/data/aux_files',
+    '/mnt/wdrv/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
+    '/mnt/wdrv/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
+    'g:/My Drive/R/cascadinggamble-core/data/aux_files',
+    '../cascadinggamble-core/data/aux_files',
+    'data/aux_files',
+    'inputs/aux_files',
+    'T:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
+    'W:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files'
+  )
+  for (cd in cands) {
+    if (!is.null(cd) && nzchar(cd) && dir.exists(cd)) {
+      found <- list.files(cd, pattern = 'one_kmID_master_mapping_.*\\.parquet$', full.names = TRUE)
+      if (length(found) > 0) return(sort(found, decreasing = TRUE)[1])
+    }
+  }
+  return(NULL)
+}
+
 load_master_grid_lookup <- function(resolution = '10km', gamble_dir = NULL) {
   res_label <- normalize_grid_resolution(resolution)
   id_col <- paste0('EEA_', res_label, 'ID')
@@ -31,36 +63,11 @@ load_master_grid_lookup <- function(resolution = '10km', gamble_dir = NULL) {
     return(readRDS(tmp_cache))
   }
 
-  # Search for master mapping parquet across container, cluster FUSE mount, and local paths
-  cands <- c(
-    if (!is.null(gamble_dir)) file.path(gamble_dir, 'data', 'aux_files'),
-    if (nzchar(Sys.getenv('CASCADING_GAMBLE_DIR', ''))) file.path(Sys.getenv('CASCADING_GAMBLE_DIR'), 'data', 'aux_files'),
-    '/tmp/gamble-cascade-live/data/aux_files',
-    '/mnt/wdrv/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
-    '/mnt/wdrv/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
-    'T:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
-    'T:/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
-    'W:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
-    'W:/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
-    'data/aux_files',
-    '../cascadinggamble-core/data/aux_files',
-    'g:/My Drive/R/cascadinggamble-core/data/aux_files',
-    'inputs/aux_files'
-  )
-  cands <- unique(cands[!is.null(cands) & nzchar(cands) & dir.exists(cands)])
-
-  pq_files <- character(0)
-  for (cd in cands) {
-    found <- list.files(cd, pattern = 'one_kmID_master_mapping_.*\\.parquet$', full.names = TRUE)
-    pq_files <- c(pq_files, found)
-  }
-
-  if (length(pq_files) == 0) {
+  latest_pq <- find_master_grid_parquet(gamble_dir)
+  if (is.null(latest_pq)) {
     cli::cli_alert_warning('Master grid mapping parquet not found. Spatial GeoTIFF export unavailable.')
     return(NULL)
   }
-
-  latest_pq <- sort(pq_files, decreasing = TRUE)[1]
   cli::cli_alert_info('Building {res_label} grid lookup from {basename(latest_pq)}...')
 
   if (!requireNamespace('arrow', quietly = TRUE)) {
@@ -97,30 +104,9 @@ load_master_simuid_bridge <- function(resolution = '10km', gamble_dir = NULL) {
   tmp_cache <- file.path(tempdir(), sprintf('master_simuid_%s_bridge.rds', res_label))
   if (file.exists(tmp_cache)) return(readRDS(tmp_cache))
 
-  cands <- c(
-    if (!is.null(gamble_dir)) file.path(gamble_dir, 'data', 'aux_files'),
-    if (nzchar(Sys.getenv('CASCADING_GAMBLE_DIR', ''))) file.path(Sys.getenv('CASCADING_GAMBLE_DIR'), 'data', 'aux_files'),
-    '/tmp/gamble-cascade-live/data/aux_files',
-    '/mnt/wdrv/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
-    '/mnt/wdrv/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
-    'T:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
-    'T:/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
-    'W:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade/data/aux_files',
-    'W:/ACT4CAP-model-pipeline/01_inputs/gamble-cascade-data/data/downscaling/auxiliary',
-    'data/aux_files',
-    '../cascadinggamble-core/data/aux_files',
-    'g:/My Drive/R/cascadinggamble-core/data/aux_files',
-    'inputs/aux_files'
-  )
-  cands <- unique(cands[!is.null(cands) & nzchar(cands) & dir.exists(cands)])
-  pq_files <- character(0)
-  for (cd in cands) {
-    found <- list.files(cd, pattern = 'one_kmID_master_mapping_.*\\.parquet$', full.names = TRUE)
-    pq_files <- c(pq_files, found)
-  }
-  if (length(pq_files) == 0 || !requireNamespace('arrow', quietly = TRUE)) return(NULL)
+  latest_pq <- find_master_grid_parquet(gamble_dir)
+  if (is.null(latest_pq) || !requireNamespace('arrow', quietly = TRUE)) return(NULL)
 
-  latest_pq <- sort(pq_files, decreasing = TRUE)[1]
   mg <- tryCatch({
     as.data.table(arrow::read_parquet(latest_pq, col_select = c(id_col, 'GLOB_SimUID'), memory_map = FALSE))
   }, error = function(e) NULL)

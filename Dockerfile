@@ -23,8 +23,12 @@ RUN Rscript /app/init.R
 
 COPY . /app
 
-# Ensure vendor assets are verified
-RUN ls -la /app/vendor/Biodiversity_Link/Input/BII_coefs.RData || echo "Biodiversity Link inputs verified"
+# Ensure vendor assets are verified and install ACT4CAPbiodiversity package
+RUN if [ -d "/app/vendor/ACT4CAPbiodiversity" ]; then \
+      R CMD INSTALL /app/vendor/ACT4CAPbiodiversity; \
+    elif [ -d "/app/vendor/Biodiversity_Link/Input" ]; then \
+      ls -la /app/vendor/Biodiversity_Link/Input/BII_coefs.RData || echo "Biodiversity Link inputs verified"; \
+    fi
 
 # Clone or verify fresh cascade-core engine and install natively
 RUN if [ -d "/app/vendor/gamble-cascade/external/cascade-core" ]; then \

@@ -59,10 +59,27 @@ OUTPUT_DIR       <- get_param('OUTPUT_DIR', '03_outputs')
 INPUT_DIR        <- get_param('INPUT_DIR', '00_inputs/macro_models')
 GAMBLE_DIR       <- get_param('CASCADING_GAMBLE_DIR', 'g:/My Drive/R/cascadinggamble-core')
 SWATPLUS_DIR     <- get_param('SWATPLUS_DIR', '/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus')
-BIODIVERSITY_DIR <- get_param('BIODIVERSITY_LINK_DIR', 'vendor/Biodiversity_Link')
+BIODIVERSITY_DIR <- get_param('BIODIVERSITY_LINK_DIR', 'vendor/ACT4CAPbiodiversity')
 BIODIVERSITY_MAPPING_FILE <- get_param('BIODIVERSITY_MAPPING_FILE', 'config/mapping_agmip_to_biodiversity_link.csv')
 POSTMODEL_MODE   <- tolower(get_param('POSTMODEL_MODE', 'full'))
 CASCADE_ENGINE_SOURCE <- tolower(get_param('CASCADE_ENGINE_SOURCE', 'live'))
+
+# Auto-resolve working directory across cluster and Windows mount points
+work_dir_resolved <- WORK_DIR
+if (startsWith(work_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows") {
+  mapped_t <- sub("^/mnt/wdrv/?", "T:/", work_dir_resolved)
+  mapped_w <- sub("^/mnt/wdrv/?", "W:/", work_dir_resolved)
+  if (is_accessible_dir(mapped_t)) {
+    cli_alert_success("Windows host detected: mapped cluster mount {WORK_DIR} to project drive {mapped_t}")
+    work_dir_resolved <- mapped_t
+  } else if (is_accessible_dir(mapped_w)) {
+    cli_alert_success("Windows host detected: mapped cluster mount {WORK_DIR} to accelerator drive {mapped_w}")
+    work_dir_resolved <- mapped_w
+  } else {
+    cli_alert_info("Windows host detected with cluster mount path {WORK_DIR}. Using local workspace outputs.")
+    work_dir_resolved <- "."
+  }
+}
 
 # Auto-resolve downscaling suite directory
 gamble_dir_resolved <- GAMBLE_DIR
@@ -74,10 +91,10 @@ if (startsWith(CASCADE_ENGINE_SOURCE, "snapshot:")) {
     file.path("T:/ACT4CAP-model-pipeline/01_interimmodel/snapshots", snap_id)
   )
   for (scand in snap_candidates) {
-    if (dir.exists(scand)) { gamble_dir_resolved <- scand; break }
+    if (is_accessible_dir(scand)) { gamble_dir_resolved <- scand; break }
   }
 }
-if (!dir.exists(gamble_dir_resolved)) {
+if (!is_accessible_dir(gamble_dir_resolved)) {
   for (cand in c(
     'T:/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
     '/mnt/wdrv/ACT4CAP-model-pipeline/01_interimmodel/gamble-cascade',
@@ -89,45 +106,46 @@ if (!dir.exists(gamble_dir_resolved)) {
     '../gamble-cascade',
     '../cascadinggamble-core'
   )) {
-    if (dir.exists(cand)) { gamble_dir_resolved <- cand; break }
+    if (is_accessible_dir(cand)) { gamble_dir_resolved <- cand; break }
   }
 }
 
 # Auto-resolve SWAT+ directory across cluster and Windows mount points
 swat_dir_resolved <- SWATPLUS_DIR
 if (startsWith(swat_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows") {
-  mapped_swat_t <- sub("^/mnt/wdrv/?", "T:/", swat_dir_resolved)
-  mapped_swat_w <- sub("^/mnt/wdrv/?", "W:/", swat_dir_resolved)
-  if (dir.exists(mapped_swat_t)) {
-    swat_dir_resolved <- mapped_swat_t
-  } else if (dir.exists(mapped_swat_w)) {
-    swat_dir_resolved <- mapped_swat_w
+  if (is_accessible_dir("T:/ACT4CAP-model-pipeline")) {
+    swat_dir_resolved <- sub("^/mnt/wdrv/?", "T:/", swat_dir_resolved)
+  } else if (is_accessible_dir("W:/ACT4CAP-model-pipeline")) {
+    swat_dir_resolved <- sub("^/mnt/wdrv/?", "W:/", swat_dir_resolved)
   }
 }
-if (!dir.exists(swat_dir_resolved)) {
+if (!is_accessible_dir(swat_dir_resolved)) {
   for (cand in c(
-    'T:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
     '/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus',
-    'W:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
-    'Q:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
     'g:/My Drive/R/act4cap-swatplus',
     '../act4cap-swatplus',
-    'T:/swatplus_runs',
-    '/mnt/wdrv/swatplus_runs',
-    'W:/swatplus_runs',
-    'Q:/swatplus_runs',
+    'T:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
+    'W:/ACT4CAP-model-pipeline/02_postmodels/swatplus',
     'swatplus_runs'
   )) {
-    if (dir.exists(cand)) { swat_dir_resolved <- cand; break }
+    if (is_accessible_dir(cand)) { swat_dir_resolved <- cand; break }
   }
 }
 
 bio_dir_resolved <- BIODIVERSITY_DIR
-if (!dir.exists(bio_dir_resolved)) {
-  if (dir.exists("vendor/Biodiversity_Link")) {
-    bio_dir_resolved <- "vendor/Biodiversity_Link"
-  } else if (dir.exists("W:/enriched_with_bii")) {
-    bio_dir_resolved <- "W:/enriched_with_bii"
+if (!is_accessible_dir(bio_dir_resolved)) {
+  for (cand in c(
+    'vendor/ACT4CAPbiodiversity',
+    '/app/vendor/ACT4CAPbiodiversity',
+    '../ACT4CAPbiodiversity',
+    'vendor/Biodiversity_Link',
+    '/app/vendor/Biodiversity_Link',
+    'W:/enriched_with_bii'
+  )) {
+    if (is_accessible_dir(cand)) {
+      bio_dir_resolved <- cand
+      break
+    }
   }
 }
 
@@ -214,29 +232,7 @@ cli_alert_info('Force Re-run:      {fifelse(FORCE, "YES (Recomputing & overwriti
 cli_alert_info('Allocated Cores:   {NCORES}')
 cli_alert_info('Agent Rules:       agent-rules-hub (active & synced from https://github.com/lringwald/agent-rules-hub)')
 
-work_dir_resolved <- WORK_DIR
-if (startsWith(work_dir_resolved, "/mnt/wdrv") && .Platform$OS.type == "windows") {
-  mapped_t <- sub("^/mnt/wdrv/?", "T:/", work_dir_resolved)
-  mapped_w <- sub("^/mnt/wdrv/?", "W:/", work_dir_resolved)
-  if (dir.exists(mapped_t)) {
-    cli_alert_success("Windows host detected: mapped cluster mount {WORK_DIR} to project drive {mapped_t}")
-    work_dir_resolved <- mapped_t
-  } else if (dir.exists(mapped_w)) {
-    cli_alert_success("Windows host detected: mapped cluster mount {WORK_DIR} to accelerator drive {mapped_w}")
-    work_dir_resolved <- mapped_w
-  } else if (!dir.exists(mapped_t) && !dir.exists(mapped_w)) {
-    tryCatch(dir.create(mapped_t, recursive = TRUE), error = function(e) NULL)
-    if (dir.exists(mapped_t)) {
-      work_dir_resolved <- mapped_t
-    } else {
-      cli_alert_info("Windows host detected with cluster mount path {WORK_DIR}. Using local workspace outputs.")
-      work_dir_resolved <- "."
-    }
-  }
-} else if (startsWith(work_dir_resolved, "/mnt") && .Platform$OS.type == "windows") {
-  cli_alert_info("Windows host detected with cluster mount path {WORK_DIR}. Using local workspace outputs.")
-  work_dir_resolved <- "."
-} else if (!dir.exists(work_dir_resolved)) {
+if (!dir.exists(work_dir_resolved)) {
   ok <- tryCatch({ dir.create(work_dir_resolved, recursive = TRUE); TRUE }, error = function(e) FALSE)
   if (!ok) {
     cli_alert_warning("WORK_DIR {WORK_DIR} cannot be created. Falling back to local workspace.")

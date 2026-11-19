@@ -1,0 +1,21 @@
+Package: ACT4CAPbiodiversity
+Title: Calculates land use biodiversity impacts from luc information
+Version: 1.0.0
+Authors: IIASA IBF team
+Maintainer: Sibylle Rouet-Pollakis <rouetpollakis@iiasa.ac.at>
+Description: Calculates biodiversity impacts (cSAR & BII) based on land use change information from IAM outputs. 
+License: MIT
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends: 
+    R (>= 3.5)
+Imports:
+    arrow,
+    data.table,
+    dplyr,
+    purrr,
+    stringr,
+    tibble,
+    tidyr
+LazyData: true
+Config/roxygen2/version: 8.0.0

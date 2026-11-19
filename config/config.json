@@ -21,7 +21,7 @@
   "CASCADING_GAMBLE_DIR": "/app/gamble-cascade",
   "CASCADE_ENGINE_SOURCE": "live",
   "SWATPLUS_DIR": "/mnt/wdrv/ACT4CAP-model-pipeline/02_postmodels/swatplus",
-  "BIODIVERSITY_LINK_DIR": "vendor/Biodiversity_Link",
+  "BIODIVERSITY_LINK_DIR": "vendor/ACT4CAPbiodiversity",
   "BIODIVERSITY_MAPPING_FILE": "config/mapping_agmip_to_biodiversity_link.csv",
   "POSTMODEL_MODE": "full"
 }

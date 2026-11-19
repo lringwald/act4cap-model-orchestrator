@@ -17,6 +17,15 @@ if (!exists('construct_version_tag')) {
   if (file.exists('R/version_labels.R')) source('R/version_labels.R')
 }
 
+is_accessible_dir <- function(path) {
+  if (is.null(path) || !nzchar(path)) return(FALSE)
+  if (.Platform$OS.type == "windows" && grepl("^[TW]:", path, ignore.case = TRUE)) {
+    # If network share is unresponsive, skip probing
+    return(FALSE)
+  }
+  dir.exists(path)
+}
+
 resolve_macro_model_vintage <- function(input_file = "", model = "globiom", input_dir = "00_inputs/macro_models", gamble_dir = NULL) {
   # If an explicit non-empty input_file is given, resolve its path
   if (!is.null(input_file) && nzchar(input_file) && input_file != "latest") {
@@ -59,13 +68,16 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
       if (!is.null(gamble_dir)) file.path(gamble_dir, "data", "macro_models", input_file),
       if (!is.null(gamble_dir)) file.path(gamble_dir, "data", input_file)
     )
+    if (.Platform$OS.type == "windows") {
+      cands <- cands[!grepl("^[TW]:", cands, ignore.case = TRUE) & !startsWith(cands, "/mnt/")]
+    }
     glob_roots <- unique(c(
       input_dir,
       "/mnt/wdrv/ACT4CAP-model-pipeline/00_inputs/macro_models",
       "T:/ACT4CAP-model-pipeline/00_inputs/macro_models",
       "W:/ACT4CAP-model-pipeline/00_inputs/macro_models"
     ))
-    glob_cands <- unlist(lapply(glob_roots[dir.exists(glob_roots)], function(rt) {
+    glob_cands <- unlist(lapply(glob_roots[vapply(glob_roots, is_accessible_dir, logical(1))], function(rt) {
       c(
         Sys.glob(file.path(rt, "*", input_file)),
         Sys.glob(file.path(rt, "*", "*", input_file))
@@ -111,7 +123,7 @@ resolve_macro_model_vintage <- function(input_file = "", model = "globiom", inpu
     if (!is.null(gamble_dir)) file.path(gamble_dir, "data"),
     file.path("/mnt/pdrv/globiom/Projects/DS_AgMIP/AgMIP_output")
   )
-  search_dirs <- search_dirs[!is.null(search_dirs) & dir.exists(search_dirs)]
+  search_dirs <- search_dirs[!is.null(search_dirs) & vapply(search_dirs, is_accessible_dir, logical(1))]
 
   candidates <- character(0)
   for (sd in search_dirs) {
@@ -229,6 +241,17 @@ ensure_downscale_parquet <- function(lu_file, model, scenario, out_dir) {
   return(upgraded)
 }
 
+find_luc_companion <- function(lu_path, scenario) {
+  if (is.null(lu_path) || !file.exists(lu_path)) return(NULL)
+  f_dir <- dirname(lu_path)
+  cands <- list.files(f_dir, pattern = sprintf('.*luc_%s\\.(parquet|csv)$', tolower(scenario)), full.names = TRUE)
+  if (length(cands) == 0) cands <- list.files(f_dir, pattern = '.*luc.*\\.(parquet|csv)$', full.names = TRUE)
+  if (length(cands) > 0) {
+    pqs <- cands[grepl('\\.parquet$', cands, ignore.case = TRUE)]
+    if (length(pqs) > 0) sort(pqs, decreasing = TRUE)[1] else sort(cands, decreasing = TRUE)[1]
+  } else NULL
+}
+
 locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, downscale_output = "auto", job_dir = NULL) {
   # 1. If explicit downscale_output folder or file was selected from target folder dropdown
   if (!is.null(downscale_output) && nzchar(downscale_output) && downscale_output != "auto" && downscale_output != "none") {
@@ -256,6 +279,7 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
           parquet_f <- found[grepl('\\.parquet$', found, ignore.case = TRUE)]
           lu_raw <- if (length(parquet_f) > 0) parquet_f[1] else found[1]
           lu_file <- ensure_downscale_parquet(lu_raw, model, scenario, out_dir)
+          luc_file <- find_luc_companion(lu_file, scenario)
           cli_alert_success('Selected explicit downscaling output: {basename(lu_file)} [{dirname(lu_file)}]')
           return(list(
             model       = model,
@@ -263,12 +287,16 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
             lu_file     = lu_file,
             lu_parquet  = if (grepl('\\.parquet$', lu_file, ignore.case = TRUE)) lu_file else NULL,
             lu_csv      = lu_file,
+            luc_file    = luc_file,
+            luc_parquet = if (!is.null(luc_file) && grepl('\\.parquet$', luc_file, ignore.case = TRUE)) luc_file else NULL,
+            luc_csv     = luc_file,
             out_folder  = dirname(lu_file),
             source_name = tools::file_path_sans_ext(basename(lu_file))
           ))
         }
       } else if (file.exists(tc)) {
         lu_file <- ensure_downscale_parquet(tc, model, scenario, out_dir)
+        luc_file <- find_luc_companion(lu_file, scenario)
         cli_alert_success('Selected explicit downscaling output file: {basename(lu_file)}')
         return(list(
           model       = model,
@@ -276,6 +304,9 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
           lu_file     = lu_file,
           lu_parquet  = if (grepl('\\.parquet$', lu_file, ignore.case = TRUE)) lu_file else NULL,
           lu_csv      = lu_file,
+          luc_file    = luc_file,
+          luc_parquet = if (!is.null(luc_file) && grepl('\\.parquet$', luc_file, ignore.case = TRUE)) luc_file else NULL,
+          luc_csv     = luc_file,
           out_folder  = dirname(lu_file),
           source_name = tools::file_path_sans_ext(basename(lu_file))
         ))
@@ -335,6 +366,7 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
       sort(cands, decreasing = TRUE)[1]
     }
     lu_file <- ensure_downscale_parquet(lu_raw, model, scenario, out_dir)
+    luc_file <- find_luc_companion(lu_file, scenario)
     cli_alert_success('Located downscaled land-use file: {basename(lu_file)} [{dirname(lu_file)}]')
     return(list(
       model       = model,
@@ -342,6 +374,9 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
       lu_file     = lu_file,
       lu_parquet  = if (grepl('\\.parquet$', lu_file, ignore.case = TRUE)) lu_file else NULL,
       lu_csv      = lu_file, # backward compatible alias
+      luc_file    = luc_file,
+      luc_parquet = if (!is.null(luc_file) && grepl('\\.parquet$', luc_file, ignore.case = TRUE)) luc_file else NULL,
+      luc_csv     = luc_file,
       out_folder  = dirname(lu_file),
       source_name = tools::file_path_sans_ext(basename(lu_file))
     ))
@@ -353,6 +388,9 @@ locate_existing_downscaling <- function(model, scenario, out_dir, gamble_dir, do
     lu_file     = NULL,
     lu_parquet  = NULL,
     lu_csv      = NULL,
+    luc_file    = NULL,
+    luc_parquet = NULL,
+    luc_csv     = NULL,
     out_folder  = out_dir,
     source_name = toupper(model)
   ))
@@ -433,8 +471,9 @@ run_act4cap_cascade_downscaling <- function(model,
   if (is_trial) {
     trial_dir     <- job_downscale_dir
     trial_parquet <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_lu_%s.parquet', tag, tolower(scenario)))
+    trial_luc_parquet <- file.path(trial_dir, sprintf('DS_ACT4CAP_AgMIP_%s_luc_%s.parquet', tag, tolower(scenario)))
     
-    if (!force && file.exists(trial_parquet)) {
+    if (!force && file.exists(trial_parquet) && file.exists(trial_luc_parquet)) {
       cli_alert_success('Reusing existing trial downscaling test parquet: {basename(trial_parquet)} [FORCE=0]')
       return(list(
         model         = model,
@@ -442,6 +481,9 @@ run_act4cap_cascade_downscaling <- function(model,
         lu_file       = trial_parquet,
         lu_parquet    = trial_parquet,
         lu_csv        = trial_parquet,
+        luc_file      = trial_luc_parquet,
+        luc_parquet   = trial_luc_parquet,
+        luc_csv       = trial_luc_parquet,
         out_folder    = trial_dir,
         source_name   = tag,
         input_vintage = vintage_info,
@@ -461,12 +503,27 @@ run_act4cap_cascade_downscaling <- function(model,
     )
     write_cell_tabular_data(trial_dt, trial_parquet)
     cli_alert_success('Created trial downscaling test parquet: {basename(trial_parquet)}')
+
+    trial_luc_dt <- data.table(
+      ns = c(1L, 1L, 1L, 1L, 2L, 2L, 2L),
+      Ns_reg = c('DEU', 'DEU', 'DEU', 'DEU', 'FRA', 'FRA', 'FRA'),
+      year = c(2020L, 2030L, 2040L, 2050L, 2020L, 2030L, 2050L),
+      from_class = c('CRP|ARA|WHT', 'CRP|ARA|WHT', 'FOR|MAN', 'GRS', 'CRP|ARA', 'FOR|MAN', 'FOR|MAN'),
+      to_class   = c('CRP|ARA|WHT', 'OLD',         'FOR|PRIM', 'OLD', 'CRP|ARA', 'OLD',     'FOR|PRIM'),
+      value      = c(45.5,          4.5,           5.2,        3.1,   60.0,      6.2,       8.4)
+    )
+    write_cell_tabular_data(trial_luc_dt, trial_luc_parquet)
+    cli_alert_success('Created trial downscaling transition test parquet: {basename(trial_luc_parquet)}')
+
     return(list(
       model         = model,
       scenario      = scenario,
       lu_file       = trial_parquet,
       lu_parquet    = trial_parquet,
       lu_csv        = trial_parquet,
+      luc_file      = trial_luc_parquet,
+      luc_parquet   = trial_luc_parquet,
+      luc_csv       = trial_luc_parquet,
       out_folder    = trial_dir,
       source_name   = tag,
       input_vintage = vintage_info,
