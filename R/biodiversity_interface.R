@@ -32,6 +32,7 @@ if (!exists('construct_act4cap_output_filenames')) {
 
 ensure_act4cap_biodiversity_pkg <- function(bio_dir = 'vendor/ACT4CAPbiodiversity') {
   if (requireNamespace('ACT4CAPbiodiversity', quietly = TRUE)) {
+    suppressPackageStartupMessages(library(ACT4CAPbiodiversity, character.only = TRUE))
     return(TRUE)
   }
   cands <- c(

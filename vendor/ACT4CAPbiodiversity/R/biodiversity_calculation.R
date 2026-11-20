@@ -18,6 +18,9 @@ get_abdlnd <- function(data,
                        LUmapping,
                        resolution = "EEA_10kmID"){
   
+  if (!exists("agmip_lc_class", envir = environment(), inherits = TRUE)) {
+    utils::data("agmip_lc_class", package = "ACT4CAPbiodiversity", envir = environment())
+  }
   if(LUmapping == "AGMIP"){
     lc_class <- agmip_lc_class
     natcat <- c("OLD")
@@ -304,6 +307,12 @@ get_biodiversity <- function(data,
                              resolution="EEA_10kmID",
                              path_mapping # "Data-raw/one_kmID_master_mapping_2026-08-12.parquet"
                              ){
+  
+  for (ds in c("f_nf_share_SimU", "pot_npp_SimU", "eco_map_SimU", "bii_coefs", "csar_coefs", "agmip_lc_class")) {
+    if (!exists(ds, envir = environment(), inherits = TRUE)) {
+      utils::data(list = ds, package = "ACT4CAPbiodiversity", envir = environment())
+    }
+  }
   
   mapping <- as.data.table(read_parquet(path_mapping,
     col_select = c("GLOB_SimUID", resolution, "GLOB_5arcminID_area_km2"),
