@@ -5,6 +5,7 @@
 !vendor/Biodiversity_Link/Input/*.RData
 !vendor/Biodiversity_Link/*.RData
 !vendor/ACT4CAPbiodiversity/Data/*.rda
+!vendor/ACT4CAPbiodiversity/data/*.rda
 !vendor/ACT4CAPbiodiversity/
 !vendor/ACT4CAPbiodiversity/**
 outputs/
